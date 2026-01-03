@@ -96,12 +96,12 @@ export async function POST(request: Request) {
     );
   }
 
-  const apiKey = process.env.OPENROUTER_API_KEY ?? "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";
+  const apiKey = process.env.OPENROUTER_API_KEY;
   const model = process.env.OPENROUTER_MODEL ?? "google/gemini-2.5-flash";
 
   if (!apiKey) {
     return NextResponse.json(
-      { error: "OPENROUTER_API_KEY manquant." },
+      { error: "OPENROUTER_API_KEY manquante dans les variables d'environnement. Veuillez configurer une clé API valide sur https://openrouter.ai/keys" },
       { status: 500 }
     );
   }
