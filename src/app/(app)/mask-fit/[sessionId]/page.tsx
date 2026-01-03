@@ -209,16 +209,25 @@ export default function MaskFitPage() {
       }
 
       const pick = (index: number) => face[index] ?? face[0];
-      const leftEye = pick(33);
-      const rightEye = pick(263);
-      const noseTip = pick(1);
-      const mouthLeft = pick(61);
-      const mouthRight = pick(291);
-      const chin = pick(152);
-      const leftCheek = pick(234);
-      const rightCheek = pick(454);
 
-      // Calculer les proportions faciales pour une calibration précise
+      // Points clés pour la calibration précise du masque
+      const leftEye = pick(33);        // Œil gauche (centre)
+      const rightEye = pick(263);      // Œil droit (centre)
+      const noseTip = pick(1);         // Pointe du nez
+      const mouthLeft = pick(61);      // Coin gauche de la bouche
+      const mouthRight = pick(291);    // Coin droit de la bouche
+      const chin = pick(152);          // Menton
+      const forehead = pick(10);       // Front (haut du visage)
+
+      // Contours externes du visage pour calibration précise
+      const leftTemple = pick(127);    // Tempe gauche
+      const rightTemple = pick(356);   // Tempe droite
+      const leftJaw = pick(172);       // Mâchoire gauche
+      const rightJaw = pick(397);      // Mâchoire droite
+      const leftCheek = pick(234);     // Pommette gauche
+      const rightCheek = pick(454);    // Pommette droite
+
+      // Calculer les dimensions faciales réelles
       const eyeDistance = Math.sqrt(
         Math.pow((rightEye.x - leftEye.x) * 100, 2) +
         Math.pow((rightEye.y - leftEye.y) * 100, 2)
@@ -234,17 +243,31 @@ export default function MaskFitPage() {
         Math.pow((mouthRight.y - mouthLeft.y) * 100, 2)
       );
 
-      const faceWidth = Math.sqrt(
+      // Largeur du visage au niveau des pommettes (plus large)
+      const faceWidthAtCheeks = Math.sqrt(
         Math.pow((rightCheek.x - leftCheek.x) * 100, 2) +
         Math.pow((rightCheek.y - leftCheek.y) * 100, 2)
       );
 
-      const faceHeight = Math.sqrt(
-        Math.pow((chin.x - pick(10).x) * 100, 2) + // Landmark 10 = forehead
-        Math.pow((chin.y - pick(10).y) * 100, 2)
+      // Largeur du visage au niveau des tempes
+      const faceWidthAtTemples = Math.sqrt(
+        Math.pow((rightTemple.x - leftTemple.x) * 100, 2) +
+        Math.pow((rightTemple.y - leftTemple.y) * 100, 2)
       );
 
-      // Sauvegarder les landmarks dans la base de données pour référence future
+      // Largeur du visage au niveau de la mâchoire
+      const faceWidthAtJaw = Math.sqrt(
+        Math.pow((rightJaw.x - leftJaw.x) * 100, 2) +
+        Math.pow((rightJaw.y - leftJaw.y) * 100, 2)
+      );
+
+      // Hauteur totale du visage (front au menton)
+      const faceHeight = Math.sqrt(
+        Math.pow((chin.x - forehead.x) * 100, 2) +
+        Math.pow((chin.y - forehead.y) * 100, 2)
+      );
+
+      // Sauvegarder les landmarks dans la base de données
       await supabaseBrowser.from("face_landmarks").insert({
         photo_id: photo.id,
         session_id: sessionId,
@@ -255,7 +278,7 @@ export default function MaskFitPage() {
         mouth_left: { x: mouthLeft.x * 100, y: mouthLeft.y * 100 },
         mouth_right: { x: mouthRight.x * 100, y: mouthRight.y * 100 },
         chin: { x: chin.x * 100, y: chin.y * 100 },
-        face_width: faceWidth,
+        face_width: Math.max(faceWidthAtCheeks, faceWidthAtTemples, faceWidthAtJaw),
         face_height: faceHeight,
         eye_distance: eyeDistance,
         nose_width: noseWidth,
@@ -269,33 +292,36 @@ export default function MaskFitPage() {
         model_version: "1.0.0",
       });
 
-      const keyPoints = [
-        leftEye,
-        rightEye,
-        noseTip,
-        mouthLeft,
-        mouthRight,
-        chin,
-      ]
-        .filter(Boolean)
-        .map((point) => [point.x * 100, point.y * 100] as [number, number]);
+      // Points de référence pour calibrer le masque (contour externe du visage)
+      const faceContourPoints = [
+        forehead,       // Haut
+        leftTemple,     // Temple gauche
+        leftCheek,      // Pommette gauche
+        leftJaw,        // Mâchoire gauche
+        chin,           // Bas
+        rightJaw,       // Mâchoire droite
+        rightCheek,     // Pommette droite
+        rightTemple,    // Temple droite
+      ].map((point) => [point.x * 100, point.y * 100] as [number, number]);
 
-      let faceMinX = Math.min(...keyPoints.map(([x]) => x));
-      let faceMaxX = Math.max(...keyPoints.map(([x]) => x));
-      let faceMinY = Math.min(...keyPoints.map(([, y]) => y));
-      let faceMaxY = Math.max(...keyPoints.map(([, y]) => y));
+      // Calculer la bounding box du visage
+      let faceMinX = Math.min(...faceContourPoints.map(([x]) => x));
+      let faceMaxX = Math.max(...faceContourPoints.map(([x]) => x));
+      let faceMinY = Math.min(...faceContourPoints.map(([, y]) => y));
+      let faceMaxY = Math.max(...faceContourPoints.map(([, y]) => y));
 
-      // Utiliser les proportions faciales pour des marges plus précises
-      // Proportions moyennes: front = 1/3, yeux-nez = 1/3, nez-menton = 1/3
-      const marginX = eyeDistance * 0.9; // Marges latérales basées sur la distance inter-pupillaire
-      const marginTop = eyeDistance * 0.65; // Marge supérieure pour le front
-      const marginBottom = eyeDistance * 0.35; // Marge inférieure pour la mâchoire
+      // Marges intelligentes basées sur les proportions anthropométriques
+      // Règle des tiers: le front représente environ 1/3 de la hauteur du visage
+      const foreheadMargin = faceHeight * 0.15;  // 15% de la hauteur totale pour le front complet
+      const jawMargin = faceHeight * 0.08;       // 8% pour inclure le dessous de la mâchoire
+      const sideMargin = eyeDistance * 0.4;      // 40% de la distance inter-pupillaire de chaque côté
 
-      faceMinX -= marginX;
-      faceMaxX += marginX;
-      faceMinY -= marginTop;
-      faceMaxY += marginBottom;
+      faceMinX -= sideMargin;
+      faceMaxX += sideMargin;
+      faceMinY -= foreheadMargin;
+      faceMaxY += jawMargin;
 
+      // Dimensions du masque
       const maskXs = maskPoints.map(([x]) => x);
       const maskYs = maskPoints.map(([, y]) => y);
       const maskMinX = Math.min(...maskXs);
@@ -313,22 +339,29 @@ export default function MaskFitPage() {
         return;
       }
 
-      const nextScale = Math.min(
-        detectedFaceWidth / maskWidth,
-        detectedFaceHeight / maskHeight
-      );
+      // Calcul de l'échelle en gardant le ratio d'aspect
+      // On prend le minimum pour que le masque englobe tout le visage
+      const scaleX = detectedFaceWidth / maskWidth;
+      const scaleY = detectedFaceHeight / maskHeight;
+      const nextScale = Math.max(scaleX, scaleY) * 0.98; // 98% pour un léger padding
+
+      // Centrage précis du masque sur le visage
       const maskCenterX = (maskMinX + maskMaxX) / 2;
       const maskCenterY = (maskMinY + maskMaxY) / 2;
       const faceCenterX = (faceMinX + faceMaxX) / 2;
       const faceCenterY = (faceMinY + faceMaxY) / 2;
 
+      // Ajustement vertical: le centre du masque doit être légèrement au-dessus du centre géométrique
+      // car le front est visuellement plus important
+      const verticalAdjustment = eyeDistance * 0.05; // Décalage léger vers le haut
+
       setScale(Number(nextScale.toFixed(3)));
       setOffset({
-        x: faceCenterX - maskCenterX,
-        y: faceCenterY - maskCenterY,
+        x: Number((faceCenterX - maskCenterX).toFixed(2)),
+        y: Number((faceCenterY - maskCenterY - verticalAdjustment).toFixed(2)),
       });
 
-      setMessage("Calibration automatique réussie avec détection des proportions faciales.");
+      setMessage("✓ Calibration automatique réussie - Masque adapté aux proportions du visage");
     } catch (error) {
       console.error("Auto-fit error:", error);
       setMessage("Auto-fit impossible. Vérifiez que le visage est bien visible.");
