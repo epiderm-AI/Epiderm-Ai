@@ -429,7 +429,7 @@ export default function PatientDetailPage() {
             <Card variant="glass" className="animate-fadeIn">
               <CardHeader>
                 <div className="flex items-center gap-2">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-pink-500">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900">
                     <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
@@ -457,7 +457,7 @@ export default function PatientDetailPage() {
             <Card variant="glass" className="animate-fadeIn" style={{ animationDelay: "0.1s" }}>
               <CardHeader>
                 <div className="flex items-center gap-2">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500 to-indigo-500">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900">
                     <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
@@ -821,12 +821,12 @@ export default function PatientDetailPage() {
       {/* Seances */}
       <section className="space-y-4 animate-fadeIn" style={{ animationDelay: "0.2s" }}>
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 to-indigo-500">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-900">
             <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </div>
-          <h2 className="bg-gradient-to-r from-indigo-600 to-pink-600 bg-clip-text text-2xl font-bold text-transparent">
+          <h2 className="text-2xl font-bold text-slate-900">
             Seances ({sessions.length})
           </h2>
         </div>
@@ -839,7 +839,7 @@ export default function PatientDetailPage() {
           </div>
         ) : sessions.length === 0 ? (
           <Card variant="glass" padding="lg" className="text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-100 to-pink-100">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100">
               <svg className="h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
@@ -864,7 +864,7 @@ export default function PatientDetailPage() {
                 style={{ animationDelay: `${index * 0.05}s` }}
               >
                 <div className="mb-3 flex items-center gap-2">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-pink-500">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900">
                     <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
@@ -901,12 +901,12 @@ export default function PatientDetailPage() {
       {/* Galerie photos */}
       <section className="space-y-4 animate-fadeIn" style={{ animationDelay: "0.3s" }}>
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500 to-indigo-500">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-900">
             <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </div>
-          <h2 className="bg-gradient-to-r from-teal-600 to-indigo-600 bg-clip-text text-2xl font-bold text-transparent">
+          <h2 className="text-2xl font-bold text-slate-900">
             Galerie photos ({photos.length})
           </h2>
         </div>
@@ -930,7 +930,7 @@ export default function PatientDetailPage() {
           </div>
         ) : photos.length === 0 ? (
           <Card variant="glass" padding="lg" className="text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-100 to-indigo-100">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100">
               <svg className="h-8 w-8 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
               </svg>
@@ -963,7 +963,7 @@ export default function PatientDetailPage() {
                       loading="lazy"
                       src={photo.signed_url}
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                     <Button
                       variant="danger"
                       size="sm"

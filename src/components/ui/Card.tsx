@@ -35,8 +35,7 @@ export function Card({
       ${hoverable || onClick ? "hover:bg-white/80 hover:shadow-xl hover:-translate-y-1" : ""}
     `,
     gradient: `
-      bg-gradient-to-br from-white via-indigo-50/30 to-pink-50/30
-      border border-white/50 shadow-lg
+      bg-white border border-slate-200 shadow-lg
       ${hoverable || onClick ? "hover:shadow-xl hover:-translate-y-1" : ""}
     `,
   };

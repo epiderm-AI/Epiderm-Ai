@@ -37,7 +37,7 @@ type Patient = {
 
 function PatientCardSkeleton() {
   return (
-    <div className="animate-pulse rounded-2xl bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 p-6 border border-slate-200">
+    <div className="animate-pulse rounded-2xl bg-white p-6 border border-slate-200">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1">
           <div className="mb-2 h-6 w-32 rounded-lg bg-slate-200/70" />
@@ -220,7 +220,7 @@ export default function PatientsPage() {
       <header className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="animate-slideInDown">
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
+            <h1 className="text-4xl font-bold text-slate-900">
               Patients
             </h1>
             <p className="mt-2 text-slate-600 text-base">
@@ -266,7 +266,7 @@ export default function PatientsPage() {
 
         {/* Messages */}
         {!authLoading && !user && (
-          <Card variant="glass" className="border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 animate-slideInDown">
+          <Card variant="glass" className="border-amber-200 bg-white animate-slideInDown">
             <CardContent>
               <div className="flex items-start gap-3">
                 <div className="flex-shrink-0 rounded-full bg-amber-100 p-2">
@@ -290,7 +290,7 @@ export default function PatientsPage() {
           </Card>
         )}
         {error && (
-          <Card variant="glass" className="border-red-200 bg-gradient-to-r from-red-50 to-pink-50 animate-slideInDown">
+          <Card variant="glass" className="border-red-200 bg-white animate-slideInDown">
             <CardContent>
               <div className="flex items-start gap-3">
                 <div className="flex-shrink-0 rounded-full bg-red-100 p-2">
@@ -304,7 +304,7 @@ export default function PatientsPage() {
           </Card>
         )}
         {successMessage && (
-          <Card variant="glass" className="border-teal-200 bg-gradient-to-r from-teal-50 to-emerald-50 animate-slideInDown">
+          <Card variant="glass" className="border-teal-200 bg-white animate-slideInDown">
             <CardContent>
               <div className="flex items-start gap-3">
                 <div className="flex-shrink-0 rounded-full bg-teal-100 p-2">
@@ -325,7 +325,7 @@ export default function PatientsPage() {
           onSubmit={handleCreatePatient}
           className="animate-slideInDown"
         >
-          <Card variant="gradient" padding="lg">
+          <Card variant="default" padding="lg">
             <CardHeader>
               <CardTitle size="lg">Nouveau patient</CardTitle>
               <CardDescription>
@@ -337,7 +337,7 @@ export default function PatientsPage() {
               {/* Informations personnelles */}
               <div className="space-y-4">
                 <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
-                  <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center">
+                  <div className="h-8 w-8 rounded-lg bg-slate-900 flex items-center justify-center">
                     <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
@@ -426,7 +426,7 @@ export default function PatientsPage() {
               {/* Style de vie */}
               <div className="space-y-4">
                 <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
-                  <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-pink-500 to-pink-600 flex items-center justify-center">
+                  <div className="h-8 w-8 rounded-lg bg-slate-900 flex items-center justify-center">
                     <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
@@ -533,7 +533,7 @@ export default function PatientsPage() {
               {/* Antécédents médicaux */}
               <div className="space-y-4">
                 <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
-                  <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center">
+                  <div className="h-8 w-8 rounded-lg bg-slate-900 flex items-center justify-center">
                     <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
@@ -573,7 +573,7 @@ export default function PatientsPage() {
               {/* Données physiques */}
               <div className="space-y-4">
                 <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
-                  <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
+                  <div className="h-8 w-8 rounded-lg bg-slate-900 flex items-center justify-center">
                     <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                     </svg>
@@ -628,7 +628,7 @@ export default function PatientsPage() {
               {/* Notes et consentement */}
               <div className="space-y-4">
                 <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
-                  <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center">
+                  <div className="h-8 w-8 rounded-lg bg-slate-900 flex items-center justify-center">
                     <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
@@ -700,7 +700,7 @@ export default function PatientsPage() {
           <Card variant="glass" className="animate-scaleIn">
             <CardContent className="p-12 text-center">
               <div className="mx-auto max-w-sm">
-                <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/30">
+                <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-900 shadow-lg">
                   <svg className="h-10 w-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
@@ -753,8 +753,8 @@ export default function PatientsPage() {
                     <span
                       className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${
                         patient.consent
-                          ? "bg-gradient-to-r from-teal-500 to-emerald-500 text-white shadow-md shadow-teal-500/30"
-                          : "bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md shadow-amber-500/30"
+                          ? "bg-emerald-600 text-white shadow-md"
+                          : "bg-amber-500 text-white shadow-md"
                       }`}
                     >
                       {patient.consent ? (

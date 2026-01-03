@@ -30,22 +30,19 @@ export function Button({
 
   const variants = {
     primary: `
-      bg-gradient-to-r from-indigo-600 to-indigo-500 text-white
-      hover:from-indigo-700 hover:to-indigo-600
-      active:from-indigo-800 active:to-indigo-700
-      shadow-lg shadow-indigo-500/30 hover:shadow-xl hover:shadow-indigo-500/40
+      bg-indigo-600 text-white
+      hover:bg-indigo-700
+      active:bg-indigo-800
     `,
     secondary: `
-      bg-gradient-to-r from-pink-600 to-pink-500 text-white
-      hover:from-pink-700 hover:to-pink-600
-      active:from-pink-800 active:to-pink-700
-      shadow-lg shadow-pink-500/30 hover:shadow-xl hover:shadow-pink-500/40
+      bg-slate-900 text-white
+      hover:bg-slate-800
+      active:bg-slate-900
     `,
     accent: `
-      bg-gradient-to-r from-teal-600 to-teal-500 text-white
-      hover:from-teal-700 hover:to-teal-600
-      active:from-teal-800 active:to-teal-700
-      shadow-lg shadow-teal-500/30 hover:shadow-xl hover:shadow-teal-500/40
+      bg-emerald-600 text-white
+      hover:bg-emerald-700
+      active:bg-emerald-800
     `,
     ghost: `
       bg-white/90 backdrop-blur-sm text-slate-700 border border-slate-200
@@ -53,10 +50,9 @@ export function Button({
       active:bg-slate-50
     `,
     danger: `
-      bg-gradient-to-r from-red-600 to-red-500 text-white
-      hover:from-red-700 hover:to-red-600
-      active:from-red-800 active:to-red-700
-      shadow-lg shadow-red-500/30 hover:shadow-xl hover:shadow-red-500/40
+      bg-red-600 text-white
+      hover:bg-red-700
+      active:bg-red-800
     `,
   };
 

@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 
-import { supabaseBrowser } from "@/lib/supabase/client";
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
+import { supabaseBrowser } from "@/lib/supabase/client";
+import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 
 /**
  * Fonction pour mettre en gras les mots-clés importants dans le texte
@@ -108,6 +109,14 @@ type GlobalAnalysis = {
   };
   created_at: string;
 };
+
+const REQUIRED_ANGLES = [
+  "face",
+  "three_quarter_left",
+  "three_quarter_right",
+  "profile_left",
+  "profile_right",
+];
 
 type ZoneGeometry = {
   id: string;
@@ -420,6 +429,7 @@ const DEFAULT_ZONE_GEOMETRY: ZoneGeometry[] = [
 
 export default function AnalysisPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const sessionId = Array.isArray(params?.sessionId)
     ? params.sessionId[0]
     : params?.sessionId;
@@ -429,6 +439,7 @@ export default function AnalysisPage() {
   const [signedUrl, setSignedUrl] = useState("");
   const [analyses, setAnalyses] = useState<ZoneAnalysis[]>([]);
   const [globalAnalysis, setGlobalAnalysis] = useState<GlobalAnalysis | null>(null);
+  const [autoGlobalTriggered, setAutoGlobalTriggered] = useState(false);
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const [model, setModel] = useState("XX");
   const [status, setStatus] = useState<"idle" | "loading" | "analyzing">(
@@ -450,8 +461,18 @@ export default function AnalysisPage() {
   const [dragPointIndex, setDragPointIndex] = useState<number | null>(null);
   const [maskFit, setMaskFit] = useState({ scale: 1, offset_x: 0, offset_y: 0 });
   const [autoFit, setAutoFit] = useState({ scale: 1, offset_x: 0, offset_y: 0 });
-  const [autoFitEnabled, setAutoFitEnabled] = useState(true);
+  const autoFitEnabled = true;
   const [faceLandmarks, setFaceLandmarks] = useState<{ x: number; y: number; z: number }[] | null>(null);
+  const [isCaptureComplete, setIsCaptureComplete] = useState(false);
+  const [hasMaskFit, setHasMaskFit] = useState(false);
+  const [chatMessages, setChatMessages] = useState<
+    { role: "user" | "assistant"; content: string }[]
+  >([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatStatus, setChatStatus] = useState<"idle" | "loading">("idle");
+  const [chatError, setChatError] = useState("");
+  const [treatmentText, setTreatmentText] = useState("");
+  const [visualPrompt, setVisualPrompt] = useState("");
   const landmarkerRef = useRef<FaceLandmarker | null>(null);
 
   const storageBucket = useMemo(
@@ -506,6 +527,20 @@ export default function AnalysisPage() {
       }
 
       if (photoData) {
+        const { data: allPhotos } = await supabaseBrowser
+          .from("photos")
+          .select("angle")
+          .eq("session_id", sessionId);
+
+        if (allPhotos) {
+          const angleSet = new Set(allPhotos.map((row) => row.angle));
+          setIsCaptureComplete(
+            REQUIRED_ANGLES.every((angle) => angleSet.has(angle))
+          );
+        } else {
+          setIsCaptureComplete(false);
+        }
+
         const { data: analysisData, error: analysisError } =
           await supabaseBrowser
             .from("face_zone_analyses")
@@ -567,8 +602,10 @@ export default function AnalysisPage() {
             offset_x: Number(fitData.offset_x ?? 0),
             offset_y: Number(fitData.offset_y ?? 0),
           });
+          setHasMaskFit(true);
         } else {
           setMaskFit({ scale: 1, offset_x: 0, offset_y: 0 });
+          setHasMaskFit(false);
         }
       }
 
@@ -1052,6 +1089,82 @@ export default function AnalysisPage() {
     setGlobalStatus("idle");
   }
 
+  async function sendChatMessage(
+    message: string,
+    mode: "chat" | "treatment" | "nutrition" = "chat",
+    treatmentType?: string
+  ) {
+    if (!sessionId || !facePhoto) {
+      return;
+    }
+
+    setChatStatus("loading");
+    setChatError("");
+    setChatMessages((prev) => [...prev, { role: "user", content: message }]);
+
+    const globalSummary =
+      typeof globalAnalysis?.result === "object" && globalAnalysis?.result
+        ? (globalAnalysis.result as { summary?: string; raw?: string }).summary ??
+          (globalAnalysis.result as { raw?: string }).raw ??
+          ""
+        : "";
+
+    const response = await fetch("/api/analysis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId,
+        photoId: facePhoto.id,
+        message,
+        mode,
+        treatmentType,
+        imageUrl: signedUrl,
+        globalSummary,
+      }),
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      setChatError(payload?.error ?? "Erreur lors de l appel IA.");
+      setChatStatus("idle");
+      return;
+    }
+
+    const payload = await response.json();
+    const reply =
+      payload?.data?.reply ??
+      payload?.data?.summary ??
+      "Reponse indisponible.";
+
+    setChatMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+    if (payload?.data?.treatmentText) {
+      setTreatmentText(payload.data.treatmentText);
+    }
+    if (payload?.data?.visualPrompt) {
+      setVisualPrompt(payload.data.visualPrompt);
+    }
+    setChatStatus("idle");
+  }
+
+  useEffect(() => {
+    const shouldAuto = searchParams?.get("auto") === "1";
+    if (!shouldAuto || autoGlobalTriggered || globalStatus === "analyzing") {
+      return;
+    }
+    if (!facePhoto || !signedUrl || globalAnalysis) {
+      return;
+    }
+    setAutoGlobalTriggered(true);
+    handleGlobalAnalysis();
+  }, [
+    searchParams,
+    autoGlobalTriggered,
+    globalStatus,
+    facePhoto,
+    signedUrl,
+    globalAnalysis,
+  ]);
+
   if (!sessionId) {
     return <div className="text-sm text-zinc-500">Session invalide.</div>;
   }
@@ -1200,41 +1313,8 @@ export default function AnalysisPage() {
                 Calibrer les modeles
               </a>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <a
-                className="rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-700"
-                href={`/mask-fit/${sessionId}?auto=1`}
-              >
-                Auto-ajuster le masque
-              </a>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                className={`rounded-full border border-zinc-200 px-3 py-1 text-xs ${
-                  autoFitEnabled ? "bg-zinc-900 text-white" : "text-zinc-700"
-                }`}
-                onClick={() => setAutoFitEnabled((prev) => !prev)}
-                type="button"
-              >
-                {autoFitEnabled ? "Zones auto (ON)" : "Zones auto (OFF)"}
-              </button>
-              <button
-                className="rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-700"
-                onClick={() => {
-                  if (!selectedZoneId) {
-                    return;
-                  }
-                  setEditMode(true);
-                  const zone = finalGeometry.find(
-                    (item) => item.id === selectedZoneId
-                  );
-                  setEditPoints(zone?.points ?? []);
-                }}
-                type="button"
-              >
-                Ajuster la zone
-              </button>
-              {editMode ? (
+            {editMode ? (
+              <div className="flex flex-wrap gap-2">
                 <>
                   <button
                     className="rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-teal-500/30 transition-all hover:shadow-xl hover:shadow-teal-500/40 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1243,19 +1323,43 @@ export default function AnalysisPage() {
                         setError("Impossible de sauvegarder : zone ou photo manquante");
                         return;
                       }
+                      const normalizedZoneId = selectedZoneId.trim();
+                      if (!zones.some((zone) => zone.id === normalizedZoneId)) {
+                        const { error: zoneInsertError } = await supabaseBrowser
+                          .from("face_zones")
+                          .insert({
+                            id: normalizedZoneId,
+                            label: normalizedZoneId,
+                            description: "",
+                          });
+                        if (zoneInsertError) {
+                          setError("Erreur lors de la creation de la zone : " + zoneInsertError.message);
+                          return;
+                        }
+                        setZones((prev) => [
+                          ...prev,
+                          { id: normalizedZoneId, label: normalizedZoneId, description: "" },
+                        ]);
+                        setSelectedZoneId(normalizedZoneId);
+                      }
                       setStatus("loading");
                       const { error: saveError } = await supabaseBrowser
                         .from("face_zone_overrides")
-                        .upsert({
-                          session_id: sessionId,
-                          photo_id: facePhoto.id,
-                          zone_id: selectedZoneId,
-                          points: editPoints,
-                        });
+                        .upsert(
+                          {
+                            session_id: sessionId,
+                            photo_id: facePhoto.id,
+                            zone_id: normalizedZoneId,
+                            points: editPoints,
+                          },
+                          {
+                            onConflict: "session_id,photo_id,zone_id",
+                          }
+                        );
                       if (!saveError) {
                         setZoneOverrides((prev) => ({
                           ...prev,
-                          [selectedZoneId]: editPoints,
+                          [normalizedZoneId]: editPoints,
                         }));
                         setEditMode(false);
                         setError("");
@@ -1294,8 +1398,8 @@ export default function AnalysisPage() {
                     ✕ Annuler
                   </button>
                 </>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
             <button
               className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
               disabled={!selectedZoneId || status === "analyzing"}
@@ -1407,6 +1511,137 @@ export default function AnalysisPage() {
           </div>
         </section>
       )}
+
+      {isCaptureComplete && hasMaskFit ? (
+        <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
+              IA esthetique visage
+            </p>
+            <h2 className="mt-2 text-xl font-semibold text-zinc-900">
+              Discussion et generations rapides
+            </h2>
+            <p className="mt-2 text-sm text-zinc-600">
+              Posez vos questions sur les photos et lancez des generations de traitements.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+            <div className="flex flex-wrap gap-2">
+              {[
+                { label: "Injection levres", prompt: "Propose un traitement d'injection des levres." },
+                { label: "Pommettes", prompt: "Propose un traitement de volumisation des pommettes." },
+                { label: "Jawline", prompt: "Propose un traitement pour definir la jawline." },
+                { label: "Sillons nasogeniens", prompt: "Propose un traitement des sillons nasogeniens." },
+                { label: "Rides frontales", prompt: "Propose un traitement des rides frontales." },
+                { label: "Cernes", prompt: "Propose un traitement pour les cernes peri-orbitaires." },
+                { label: "Nutrition & vieillissement", prompt: "Donne des conseils nutritionnels pour la qualite de peau et le vieillissement.", mode: "nutrition" as const },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  className="rounded-full border border-zinc-200 bg-white px-4 py-2 text-xs font-semibold text-zinc-700 transition hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-60"
+                  disabled={chatStatus === "loading"}
+                  onClick={() =>
+                    sendChatMessage(
+                      item.prompt,
+                      item.mode ?? "treatment",
+                      item.label
+                    )
+                  }
+                  type="button"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-4 max-h-[320px] space-y-3 overflow-y-auto rounded-xl bg-white p-4 text-sm text-zinc-700 shadow-inner">
+              {chatMessages.length === 0 ? (
+                <p className="text-zinc-400">
+                  Aucun message pour le moment. Utilisez les raccourcis ou posez une question.
+                </p>
+              ) : (
+                chatMessages.map((msg, index) => (
+                  <div
+                    key={`${msg.role}-${index}`}
+                    className={`rounded-xl px-4 py-3 ${
+                      msg.role === "user"
+                        ? "bg-indigo-50 text-indigo-900"
+                        : "bg-emerald-50 text-emerald-900"
+                    }`}
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-wide">
+                      {msg.role === "user" ? "Vous" : "IA"}
+                    </p>
+                    <p className="mt-1 whitespace-pre-wrap">{msg.content}</p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {chatError ? (
+              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">
+                {chatError}
+              </div>
+            ) : null}
+
+            <div className="mt-6">
+              <h3 className="text-center text-lg font-semibold text-zinc-900">
+                Demandez a l IA
+              </h3>
+              <p className="mt-1 text-center text-xs text-zinc-500">
+                Esthetique du visage, traitements, nutrition, vieillissement.
+              </p>
+              <div className="mt-4">
+                <PlaceholdersAndVanishInput
+                  placeholders={[
+                    "Quelles zones du visage faut-il prioriser ?",
+                    "Quels traitements pour la jawline ?",
+                    "Conseils nutritionnels pour la qualite de peau",
+                    "Proposer une option de traitement levres",
+                    "Comment ralentir le vieillissement du visage ?",
+                  ]}
+                  value={chatInput}
+                  onChange={(event) => setChatInput(event.target.value)}
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (!chatInput.trim()) {
+                      return;
+                    }
+                    sendChatMessage(chatInput.trim(), "chat");
+                    setChatInput("");
+                  }}
+                  disabled={chatStatus === "loading"}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+            <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
+              Generation IA
+            </p>
+            <h3 className="mt-2 text-lg font-semibold text-zinc-900">
+              Texte de traitement
+            </h3>
+            <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-700">
+              {treatmentText || "Selectionnez un raccourci pour generer un traitement."}
+            </p>
+            {visualPrompt ? (
+              <div className="mt-4 rounded-xl border border-dashed border-indigo-200 bg-indigo-50 px-4 py-3 text-xs text-indigo-700">
+                Prompt image pret : {visualPrompt}
+              </div>
+            ) : null}
+            <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs text-zinc-600">
+              Generation d'image: en attente de configuration du modele d'image.
+            </div>
+          </div>
+        </div>
+      </section>
+      ) : null}
 
       {/* Section Analyse Globale */}
       {globalAnalysis && (

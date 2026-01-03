@@ -125,12 +125,12 @@ export default function CapturePage() {
         }
 
         const track = stream.getVideoTracks()[0];
-        const capabilities = track?.getCapabilities?.();
+        const capabilities = track?.getCapabilities?.() as any;
         if (capabilities && "zoom" in capabilities && capabilities.zoom) {
           const min = Number(capabilities.zoom.min ?? 1);
           const max = Number(capabilities.zoom.max ?? 1);
           const step = Number(capabilities.zoom.step ?? 0.1);
-          const current = Number(track.getSettings()?.zoom ?? min);
+          const current = Number((track.getSettings() as any)?.zoom ?? min);
           setZoomRange({ min, max, step });
           setZoomLevel(current);
         } else {
@@ -155,6 +155,10 @@ export default function CapturePage() {
     setCurrentStep(0);
   }, [patientId]);
 
+  const step = CAPTURE_STEPS[currentStep];
+  const isLastStep = currentStep === CAPTURE_STEPS.length - 1;
+  const completedCount = Object.keys(completed).length;
+
   useEffect(() => {
     async function applyZoom() {
       const track = streamRef.current?.getVideoTracks?.()[0];
@@ -163,7 +167,7 @@ export default function CapturePage() {
       }
       try {
         await track.applyConstraints({
-          advanced: [{ zoom: zoomLevel }],
+          advanced: [{ zoom: zoomLevel } as any],
         });
       } catch {
         // Ignore zoom errors silently (not supported on all devices)
@@ -335,13 +339,26 @@ export default function CapturePage() {
       return;
     }
 
-    setCompleted((prev) => ({ ...prev, [angle]: true }));
+    setCompleted((prev) => {
+      const next = { ...prev, [angle]: true };
+      return next;
+    });
     setStatus("idle");
     setMessage("Photo sauvegardee avec succes");
     setTimeout(() => setMessage(""), 3000);
 
-    if (angle === "face" && insertedPhoto?.id) {
-      router.push(`/mask-fit/${ensuredSessionId}`);
+    // Passer automatiquement à l'étape suivante si ce n'est pas la dernière
+    const currentStepIndex = CAPTURE_STEPS.findIndex(s => s.angle === angle);
+    if (currentStepIndex !== -1 && currentStepIndex < CAPTURE_STEPS.length - 1) {
+      // Attendre un peu pour que l'utilisateur voie le message de succès
+      setTimeout(() => {
+        setCurrentStep(currentStepIndex + 1);
+      }, 1000);
+    } else if (Object.keys(completed).length + 1 === CAPTURE_STEPS.length) {
+      // Toutes les photos sont prises, rediriger vers l'analyse
+      setTimeout(() => {
+        router.push(`/analysis/${ensuredSessionId}`);
+      }, 1500);
     }
   }
 
@@ -485,10 +502,6 @@ export default function CapturePage() {
     }
   }
 
-  const step = CAPTURE_STEPS[currentStep];
-  const isLastStep = currentStep === CAPTURE_STEPS.length - 1;
-  const completedCount = Object.keys(completed).length;
-
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-8">
       {/* Header */}
@@ -502,7 +515,7 @@ export default function CapturePage() {
         </div>
 
         <div>
-          <h1 className="bg-gradient-to-r from-indigo-600 via-pink-600 to-teal-600 bg-clip-text text-4xl font-bold text-transparent">
+          <h1 className="text-4xl font-bold text-slate-900">
             Capture guidee
           </h1>
           <p className="mt-2 text-lg text-slate-600">
@@ -516,8 +529,8 @@ export default function CapturePage() {
             <div className="flex-1">
               <label className="mb-2 block text-sm font-semibold text-slate-700" htmlFor="patient">
                 <div className="flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-pink-500">
-                    <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900">
+                  <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
                   </div>
@@ -560,7 +573,7 @@ export default function CapturePage() {
             </div>
 
             <div className="text-sm">
-              <div className="rounded-2xl bg-gradient-to-br from-indigo-500 to-pink-500 p-4 text-center shadow-lg">
+              <div className="rounded-2xl bg-slate-900 p-4 text-center shadow-lg">
                 <div className="text-3xl font-bold text-white">
                   {completedCount}/{CAPTURE_STEPS.length}
                 </div>
@@ -570,10 +583,10 @@ export default function CapturePage() {
           </div>
         </Card>
 
-        <Card variant="gradient" className="animate-slideInDown" style={{ animationDelay: "0.2s" }}>
+        <Card variant="default" className="animate-slideInDown" style={{ animationDelay: "0.2s" }}>
           <CardHeader>
             <div className="flex items-center gap-2">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500 to-indigo-500">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900">
                 <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -584,19 +597,19 @@ export default function CapturePage() {
           <CardContent>
             <ol className="grid gap-3 text-sm text-slate-600">
               <li className="flex items-start gap-3">
-                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-pink-500 text-xs font-bold text-white">1</span>
+                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">1</span>
                 <span>Choisir un patient (ou en creer un si besoin)</span>
               </li>
               <li className="flex items-start gap-3">
-                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-pink-500 text-xs font-bold text-white">2</span>
+                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">2</span>
                 <span>La seance photo se cree automatiquement a la premiere capture</span>
               </li>
               <li className="flex items-start gap-3">
-                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-pink-500 text-xs font-bold text-white">3</span>
+                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">3</span>
                 <span>Capturer les 5 angles guides pour assurer la reproductibilite</span>
               </li>
               <li className="flex items-start gap-3">
-                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-pink-500 text-xs font-bold text-white">4</span>
+                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">4</span>
                 <span>Lancer l'analyse visage par zones et consulter les observations</span>
               </li>
             </ol>
@@ -604,31 +617,70 @@ export default function CapturePage() {
         </Card>
 
         {/* Progress steps */}
-        <div className="flex flex-wrap gap-2 animate-fadeIn" style={{ animationDelay: "0.3s" }}>
-          {CAPTURE_STEPS.map((item, index) => (
-            <Button
-              key={item.angle}
-              onClick={() => setCurrentStep(index)}
-              variant={
-                completed[item.angle]
-                  ? "accent"
-                  : index === currentStep
-                    ? "primary"
-                    : "ghost"
-              }
-              size="sm"
-              icon={
-                completed[item.angle] ? (
-                  <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+        <Card variant="glass" className="animate-fadeIn" style={{ animationDelay: "0.3s" }}>
+          <CardHeader>
+            <CardTitle size="sm">Processus de capture</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 md:grid-cols-5">
+              {CAPTURE_STEPS.map((item, index) => {
+                const done = !!completed[item.angle];
+                const isActive = index === currentStep;
+                return (
+                  <button
+                    key={item.angle}
+                    onClick={() => setCurrentStep(index)}
+                    className={`flex items-center gap-3 rounded-2xl border px-3 py-3 text-left transition ${
+                      done
+                        ? "border-emerald-300 bg-emerald-50"
+                        : isActive
+                          ? "border-indigo-300 bg-indigo-50"
+                          : "border-slate-200 bg-white"
+                    }`}
+                    type="button"
+                  >
+                    <div
+                      className={`flex h-8 w-8 items-center justify-center rounded-full border ${
+                        done
+                          ? "border-emerald-400 bg-emerald-500 text-white"
+                          : "border-slate-300 bg-white text-slate-700"
+                      }`}
+                    >
+                      {done ? (
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <span className="text-sm font-semibold">{index + 1}</span>
+                      )}
+                    </div>
+                    <div className="text-xs font-semibold text-slate-700">
+                      {item.label}
+                      {done ? (
+                        <p className="text-[10px] font-medium text-emerald-600">Valide</p>
+                      ) : (
+                        <p className="text-[10px] text-slate-400">En attente</p>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
+              <span>Suivez les etapes dans l ordre pour une session completee.</span>
+              {completedCount === CAPTURE_STEPS.length ? (
+                <span className="flex items-center gap-2 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-emerald-700">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                ) : undefined
-              }
-            >
-              {item.label}
-            </Button>
-          ))}
-        </div>
+                  Session completee
+                </span>
+              ) : (
+                <span>{completedCount}/{CAPTURE_STEPS.length} valides</span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </header>
 
       {/* Main capture interface */}
@@ -741,11 +793,11 @@ export default function CapturePage() {
               Precedent
             </Button>
 
-            <button
-              onClick={handleCapture}
-              disabled={status === "uploading" || !step || !!cameraError}
-              className="group flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 to-pink-600 text-white shadow-2xl transition-all hover:scale-110 hover:shadow-indigo-500/50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 min-h-[80px]"
-            >
+              <button
+                onClick={handleCapture}
+                disabled={status === "uploading" || !step || !!cameraError}
+                className="group flex h-20 w-20 items-center justify-center rounded-full bg-slate-900 text-white shadow-2xl transition-all hover:scale-110 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 min-h-[80px]"
+              >
               {status === "uploading" ? (
                 <svg className="h-8 w-8 animate-spin" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -780,7 +832,7 @@ export default function CapturePage() {
         <div className="space-y-4">
           <Card variant="glass">
             <div className="mb-4 flex items-center gap-3">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-pink-500 shadow-lg">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 shadow-lg">
                 <span className="text-2xl font-bold text-white">
                   {currentStep + 1}
                 </span>
@@ -789,7 +841,7 @@ export default function CapturePage() {
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                   Etape {currentStep + 1}/{CAPTURE_STEPS.length}
                 </p>
-                <h2 className="bg-gradient-to-r from-indigo-600 to-pink-600 bg-clip-text text-xl font-bold text-transparent">
+                <h2 className="text-xl font-bold text-slate-900">
                   {step?.label}
                 </h2>
               </div>
@@ -814,7 +866,7 @@ export default function CapturePage() {
           <Card variant="glass" className="border-2 border-dashed border-slate-300">
             <CardHeader>
               <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-teal-500 to-indigo-500">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900">
                   <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                   </svg>
@@ -827,7 +879,7 @@ export default function CapturePage() {
                 Si la camera ne fonctionne pas, uploadez une photo depuis vos fichiers
               </p>
               <input
-                className="mb-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm file:mr-3 file:cursor-pointer file:rounded-full file:border-0 file:bg-gradient-to-r file:from-indigo-500 file:to-pink-500 file:px-4 file:py-2 file:text-xs file:font-semibold file:text-white hover:file:from-indigo-600 hover:file:to-pink-600 min-h-[44px]"
+                className="mb-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm file:mr-3 file:cursor-pointer file:rounded-full file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-xs file:font-semibold file:text-white hover:file:bg-slate-800 min-h-[44px]"
                 type="file"
                 accept="image/*"
                 onChange={(event) => setFallbackFile(event.target.files?.[0] ?? null)}
@@ -845,10 +897,10 @@ export default function CapturePage() {
           </Card>
 
           {/* Quick tips */}
-          <Card variant="gradient" className="bg-gradient-to-br from-indigo-50 via-pink-50 to-teal-50">
+          <Card variant="default">
             <CardHeader>
               <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-teal-500">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900">
                   <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
@@ -859,19 +911,19 @@ export default function CapturePage() {
             <CardContent>
               <ul className="space-y-3 text-sm text-slate-600">
                 <li className="flex items-start gap-3">
-                  <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-pink-500 text-xs font-bold text-white">✓</span>
+                  <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">✓</span>
                   <span>Assurez-vous d'avoir un bon eclairage</span>
                 </li>
                 <li className="flex items-start gap-3">
-                  <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-pink-500 text-xs font-bold text-white">✓</span>
+                  <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">✓</span>
                   <span>Placez le visage dans le cadre guide</span>
                 </li>
                 <li className="flex items-start gap-3">
-                  <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-pink-500 text-xs font-bold text-white">✓</span>
+                  <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">✓</span>
                   <span>Evitez les ombres trop marquees</span>
                 </li>
                 <li className="flex items-start gap-3">
-                  <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-pink-500 text-xs font-bold text-white">✓</span>
+                  <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">✓</span>
                   <span>Expression neutre pour tous les angles</span>
                 </li>
               </ul>
@@ -882,13 +934,13 @@ export default function CapturePage() {
 
       {/* Completion message */}
       {completedCount === CAPTURE_STEPS.length && (
-        <Card variant="glass" padding="lg" className="text-center border-2 border-teal-300 bg-gradient-to-br from-teal-50 to-indigo-50 animate-scaleIn">
-          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-indigo-500 shadow-2xl">
+        <Card variant="glass" padding="lg" className="text-center border-2 border-slate-300 bg-white animate-scaleIn">
+          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-900 shadow-2xl">
             <svg className="h-10 w-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h3 className="mb-2 bg-gradient-to-r from-teal-600 to-indigo-600 bg-clip-text text-2xl font-bold text-transparent">
+          <h3 className="mb-2 text-2xl font-bold text-slate-900">
             Capture terminee !
           </h3>
           <p className="mb-6 text-slate-600">
