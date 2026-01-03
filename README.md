@@ -1,24 +1,78 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# EpidermAI - Plateforme d'Analyse Faciale Esthétique
+
+Application Next.js pour l'analyse faciale esthétique avec IA, développée pour les professionnels de santé.
+
+## ⚠️ Configuration Requise
+
+### Clé API OpenRouter
+
+Cette application nécessite une clé API OpenRouter valide pour fonctionner.
+
+**Si vous voyez cette erreur** : `OpenRouter error: {"error":{"message":"User not found.","code":401}}`
+
+👉 **Consultez le guide complet** : [CONFIGURATION_OPENROUTER.md](./CONFIGURATION_OPENROUTER.md)
+
+**Test rapide** :
+```bash
+node test-openrouter.js
+```
+
+---
 
 ## Getting Started
 
-First, run the development server:
+### 1. Variables d'environnement
+
+Copiez `.env.local.example` et remplissez vos clés:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.local.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Minimum requis:
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://votre-projet.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=votre_anon_key
+OPENROUTER_API_KEY=sk-or-v1-...  # ⚠️ OBLIGATOIRE
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 2. Installation et démarrage
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm install
+npm run dev
+```
+
+Ouvrez [http://localhost:3000](http://localhost:3000) pour voir l'application.
+
+---
+
+## 📚 Documentation
+
+- [CONFIGURATION_OPENROUTER.md](./CONFIGURATION_OPENROUTER.md) - Configuration de l'API OpenRouter (OBLIGATOIRE)
+- [DEPLOIEMENT_NETLIFY.md](./DEPLOIEMENT_NETLIFY.md) - Guide de déploiement sur Netlify
+- [ANALYSE_GLOBALE.md](./ANALYSE_GLOBALE.md) - Documentation de l'analyse faciale globale
+- [SYSTEME_ANALYSE_FACIALE.md](./SYSTEME_ANALYSE_FACIALE.md) - Architecture du système d'analyse
+
+---
+
+## 🔧 Scripts Utiles
+
+```bash
+# Test de la clé API OpenRouter
+node test-openrouter.js
+
+# Build de production
+npm run build
+
+# Vérification TypeScript
+npx tsc --noEmit
+
+# Linting
+npx eslint .
+```
+
+---
 
 ## Learn More
 

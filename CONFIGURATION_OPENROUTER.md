@@ -59,7 +59,33 @@ Cela signifie que votre clé API OpenRouter est **invalide, expirée ou manquant
 
 Pour vérifier que votre clé fonctionne:
 
-### 1. Test via l'API de debug
+### 1. Test rapide avec le script (RECOMMANDÉ)
+
+Utilisez le script de test fourni:
+
+```bash
+node test-openrouter.js
+```
+
+**Si tout fonctionne**, vous verrez:
+```
+✅ SUCCÈS ! La clé API fonctionne correctement.
+✨ Votre configuration OpenRouter est prête à l'emploi !
+```
+
+**Si la clé est invalide**, vous verrez:
+```
+❌ ERREUR 401:
+{"error":{"message":"User not found.","code":401}}
+
+💡 Solutions possibles:
+   1. Votre clé API est invalide ou expirée
+   2. Allez sur https://openrouter.ai/keys
+   3. Créez une nouvelle clé API
+   4. Remplacez OPENROUTER_API_KEY dans .env.local
+```
+
+### 2. Test via l'API de debug
 
 Allez sur: `http://localhost:3000/api/debug` (en dev) ou `https://votre-site.netlify.app/api/debug` (en prod)
 
@@ -74,7 +100,7 @@ Vous devriez voir:
 }
 ```
 
-### 2. Test d'analyse faciale
+### 3. Test d'analyse faciale
 
 1. Créez un patient
 2. Créez une session
