@@ -1237,11 +1237,13 @@ export default function AnalysisPage() {
               {editMode ? (
                 <>
                   <button
-                    className="rounded-full bg-zinc-900 px-3 py-1 text-xs text-white"
+                    className="rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-teal-500/30 transition-all hover:shadow-xl hover:shadow-teal-500/40 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={async () => {
                       if (!selectedZoneId || !facePhoto) {
+                        setError("Impossible de sauvegarder : zone ou photo manquante");
                         return;
                       }
+                      setStatus("loading");
                       const { error: saveError } = await supabaseBrowser
                         .from("face_zone_overrides")
                         .upsert({
@@ -1256,14 +1258,19 @@ export default function AnalysisPage() {
                           [selectedZoneId]: editPoints,
                         }));
                         setEditMode(false);
+                        setError("");
+                      } else {
+                        setError("Erreur lors de la sauvegarde : " + saveError.message);
                       }
+                      setStatus("idle");
                     }}
+                    disabled={status === "loading" || !selectedZoneId || !facePhoto || editPoints.length < 3}
                     type="button"
                   >
-                    Sauver
+                    {status === "loading" ? "Sauvegarde..." : "✓ Sauvegarder"}
                   </button>
                   <button
-                    className="rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-700"
+                    className="rounded-xl border-2 border-red-200 bg-white px-6 py-3 text-sm font-semibold text-red-600 transition-all hover:bg-red-50 hover:border-red-300"
                     onClick={async () => {
                       if (!selectedZoneId || !facePhoto) {
                         return;
@@ -1284,7 +1291,7 @@ export default function AnalysisPage() {
                     }}
                     type="button"
                   >
-                    Reset
+                    ✕ Annuler
                   </button>
                 </>
               ) : null}

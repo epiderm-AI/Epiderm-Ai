@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
@@ -35,10 +37,21 @@ export default function CapturePage() {
   const [cameraError, setCameraError] = useState("");
   const [model, setModel] = useState("XX");
   const [maskPoints, setMaskPoints] = useState<[number, number][]>([]);
+  const [facingMode, setFacingMode] = useState<"user" | "environment">("environment");
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomRange, setZoomRange] = useState<{ min: number; max: number; step: number } | null>(null);
+  const [isAligned, setIsAligned] = useState(false);
+  const [isDetecting, setIsDetecting] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const landmarkerRef = useRef<FaceLandmarker | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const lastDetectRef = useRef(0);
+  const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchRef = useRef<{ initialDistance: number; initialZoom: number } | null>(null);
 
   const storageBucket = useMemo(
     () => process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET,
@@ -97,15 +110,32 @@ export default function CapturePage() {
         return;
       }
 
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" } },
+          video: { facingMode: { ideal: facingMode } },
           audio: false,
         });
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
+        }
+
+        const track = stream.getVideoTracks()[0];
+        const capabilities = track?.getCapabilities?.();
+        if (capabilities && "zoom" in capabilities && capabilities.zoom) {
+          const min = Number(capabilities.zoom.min ?? 1);
+          const max = Number(capabilities.zoom.max ?? 1);
+          const step = Number(capabilities.zoom.step ?? 0.1);
+          const current = Number(track.getSettings()?.zoom ?? min);
+          setZoomRange({ min, max, step });
+          setZoomLevel(current);
+        } else {
+          setZoomRange(null);
+          setZoomLevel(1);
         }
       } catch {
         setCameraError("Impossible d'acceder a la camera. Verifiez les autorisations.");
@@ -117,13 +147,142 @@ export default function CapturePage() {
     return () => {
       streamRef.current?.getTracks().forEach((track) => track.stop());
     };
-  }, []);
+  }, [facingMode]);
 
   useEffect(() => {
     setSessionId("");
     setCompleted({});
     setCurrentStep(0);
   }, [patientId]);
+
+  useEffect(() => {
+    async function applyZoom() {
+      const track = streamRef.current?.getVideoTracks?.()[0];
+      if (!track || !zoomRange) {
+        return;
+      }
+      try {
+        await track.applyConstraints({
+          advanced: [{ zoom: zoomLevel }],
+        });
+      } catch {
+        // Ignore zoom errors silently (not supported on all devices)
+      }
+    }
+
+    applyZoom();
+  }, [zoomLevel, zoomRange]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function getLandmarker() {
+      if (landmarkerRef.current) {
+        return landmarkerRef.current;
+      }
+      const vision = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+      );
+      const landmarker = await FaceLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath:
+            "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+        },
+        outputFaceBlendshapes: false,
+        outputFacialTransformationMatrixes: false,
+        numFaces: 1,
+        runningMode: "VIDEO",
+      });
+      landmarkerRef.current = landmarker;
+      return landmarker;
+    }
+
+    async function startDetection() {
+      if (!videoRef.current || step?.angle !== "face") {
+        setIsAligned(false);
+        return;
+      }
+      setIsDetecting(true);
+      const landmarker = await getLandmarker();
+
+      const loop = () => {
+        if (cancelled || !videoRef.current) {
+          return;
+        }
+        if (videoRef.current.readyState < 2) {
+          rafRef.current = requestAnimationFrame(loop);
+          return;
+        }
+        const now = performance.now();
+        if (now - lastDetectRef.current < 120) {
+          rafRef.current = requestAnimationFrame(loop);
+          return;
+        }
+        lastDetectRef.current = now;
+        const result = landmarker.detectForVideo(videoRef.current, now);
+        const face = result.faceLandmarks?.[0];
+        if (!face || face.length === 0) {
+          setIsAligned(false);
+          rafRef.current = requestAnimationFrame(loop);
+          return;
+        }
+
+        const xs = face.map((point) => point.x * 100);
+        const ys = face.map((point) => point.y * 100);
+        const faceBox = {
+          minX: Math.min(...xs),
+          maxX: Math.max(...xs),
+          minY: Math.min(...ys),
+          maxY: Math.max(...ys),
+        };
+
+        const maskBox = maskPoints.length > 2
+          ? {
+              minX: Math.min(...maskPoints.map(([x]) => x)),
+              maxX: Math.max(...maskPoints.map(([x]) => x)),
+              minY: Math.min(...maskPoints.map(([, y]) => y)),
+              maxY: Math.max(...maskPoints.map(([, y]) => y)),
+            }
+          : { minX: 20, maxX: 80, minY: 10, maxY: 90 };
+
+        const faceWidth = faceBox.maxX - faceBox.minX;
+        const faceHeight = faceBox.maxY - faceBox.minY;
+        const maskWidth = maskBox.maxX - maskBox.minX;
+        const maskHeight = maskBox.maxY - maskBox.minY;
+        const centerDx = Math.abs(
+          (faceBox.minX + faceBox.maxX) / 2 - (maskBox.minX + maskBox.maxX) / 2
+        ) / maskWidth;
+        const centerDy = Math.abs(
+          (faceBox.minY + faceBox.maxY) / 2 - (maskBox.minY + maskBox.maxY) / 2
+        ) / maskHeight;
+
+        const sizeRatioX = faceWidth / maskWidth;
+        const sizeRatioY = faceHeight / maskHeight;
+        const aligned =
+          centerDx < 0.08 &&
+          centerDy < 0.08 &&
+          sizeRatioX > 0.6 &&
+          sizeRatioX < 0.95 &&
+          sizeRatioY > 0.6 &&
+          sizeRatioY < 0.95;
+
+        setIsAligned(aligned);
+        rafRef.current = requestAnimationFrame(loop);
+      };
+
+      rafRef.current = requestAnimationFrame(loop);
+    }
+
+    startDetection();
+
+    return () => {
+      cancelled = true;
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+      setIsDetecting(false);
+    };
+  }, [maskPoints, step?.angle]);
 
   async function uploadBlob(
     blob: Blob,
@@ -163,7 +322,7 @@ export default function CapturePage() {
       .insert({
         session_id: ensuredSessionId,
         angle,
-        camera: "rear",
+        camera: facingMode === "user" ? "front" : "rear",
         storage_path: storagePath,
         metadata,
       })
@@ -278,6 +437,52 @@ export default function CapturePage() {
     setMessage("");
     setFallbackFile(null);
     setCurrentStep((prev) => Math.max(prev - 1, 0));
+  }
+
+  function clampZoom(value: number) {
+    if (!zoomRange) {
+      return value;
+    }
+    return Math.min(zoomRange.max, Math.max(zoomRange.min, value));
+  }
+
+  function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (!zoomRange || event.pointerType !== "touch") {
+      return;
+    }
+    (event.currentTarget as HTMLDivElement).setPointerCapture(event.pointerId);
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointersRef.current.size === 2) {
+      const points = Array.from(pointersRef.current.values());
+      const distance = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+      pinchRef.current = { initialDistance: distance, initialZoom: zoomLevel };
+    }
+  }
+
+  function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
+    if (!zoomRange || event.pointerType !== "touch") {
+      return;
+    }
+    if (!pointersRef.current.has(event.pointerId)) {
+      return;
+    }
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointersRef.current.size === 2 && pinchRef.current) {
+      const points = Array.from(pointersRef.current.values());
+      const distance = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+      const scale = distance / pinchRef.current.initialDistance;
+      setZoomLevel(clampZoom(pinchRef.current.initialZoom * scale));
+    }
+  }
+
+  function handlePointerUp(event: PointerEvent<HTMLDivElement>) {
+    if (!zoomRange || event.pointerType !== "touch") {
+      return;
+    }
+    pointersRef.current.delete(event.pointerId);
+    if (pointersRef.current.size < 2) {
+      pinchRef.current = null;
+    }
   }
 
   const step = CAPTURE_STEPS[currentStep];
@@ -431,8 +636,15 @@ export default function CapturePage() {
         {/* Camera preview */}
         <div className="space-y-4">
           <Card variant="glass" padding="none" className="overflow-hidden bg-black shadow-2xl">
-            <div className="relative aspect-[4/3] bg-black">
-              <video ref={videoRef} className="h-full w-full object-cover" />
+            <div
+              ref={containerRef}
+              className="relative aspect-[4/3] bg-black"
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+            >
+              <video ref={videoRef} className="h-full w-full object-cover" muted playsInline />
 
               {/* Face guide overlay */}
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -440,8 +652,8 @@ export default function CapturePage() {
                   {maskPoints.length > 2 ? (
                     <polygon
                       points={maskPoints.map(([x, y]) => `${x},${y}`).join(" ")}
-                      fill="rgba(255,255,255,0.08)"
-                      stroke="rgba(255,255,255,0.6)"
+                      fill={isAligned ? "rgba(34,197,94,0.18)" : "rgba(255,255,255,0.08)"}
+                      stroke={isAligned ? "rgba(34,197,94,0.9)" : "rgba(255,255,255,0.6)"}
                       strokeWidth="0.6"
                     />
                   ) : (
@@ -451,12 +663,21 @@ export default function CapturePage() {
                       width="60"
                       height="80"
                       rx="18"
-                      fill="rgba(255,255,255,0.06)"
-                      stroke="rgba(255,255,255,0.4)"
+                      fill={isAligned ? "rgba(34,197,94,0.18)" : "rgba(255,255,255,0.06)"}
+                      stroke={isAligned ? "rgba(34,197,94,0.9)" : "rgba(255,255,255,0.4)"}
                       strokeWidth="0.6"
                     />
                   )}
                 </svg>
+              </div>
+
+              <div className="pointer-events-none absolute left-4 top-4 flex items-center gap-2 rounded-full bg-black/50 px-3 py-1 text-xs font-semibold text-white">
+                <span className={isAligned ? "text-emerald-200" : "text-white/80"}>
+                  {isAligned ? "Visage aligne" : "Ajustez le visage"}
+                </span>
+                {step?.angle === "face" && isDetecting && (
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+                )}
               </div>
 
               {/* Status overlay */}
@@ -476,6 +697,33 @@ export default function CapturePage() {
           </Card>
 
           <canvas ref={canvasRef} className="hidden" />
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Button
+              onClick={() =>
+                setFacingMode((prev) => (prev === "environment" ? "user" : "environment"))
+              }
+              variant="secondary"
+              size="sm"
+            >
+              Changer camera
+            </Button>
+
+            <div className="flex flex-1 items-center gap-3 text-xs text-slate-600">
+              <span className="whitespace-nowrap">Zoom</span>
+              <input
+                className="w-full"
+                type="range"
+                min={zoomRange?.min ?? 1}
+                max={zoomRange?.max ?? 1}
+                step={zoomRange?.step ?? 0.1}
+                value={zoomLevel}
+                onChange={(event) => setZoomLevel(clampZoom(Number(event.target.value)))}
+                disabled={!zoomRange}
+              />
+              <span className="w-10 text-right">{zoomLevel.toFixed(1)}x</span>
+            </div>
+          </div>
 
           {/* Capture controls */}
           <div className="flex items-center justify-between gap-4">
