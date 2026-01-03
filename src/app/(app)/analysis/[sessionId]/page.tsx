@@ -114,6 +114,311 @@ type ZoneGeometry = {
   points: [number, number][];
 };
 
+/**
+ * Génère automatiquement les zones esthétiques du visage
+ * en utilisant les landmarks MediaPipe pour s'adapter à la morphologie du patient
+ */
+function generateIntelligentZones(
+  landmarks: { x: number; y: number; z: number }[],
+  model: "XX" | "XY" = "XX"
+): ZoneGeometry[] {
+  if (!landmarks || landmarks.length < 478) {
+    return DEFAULT_ZONE_GEOMETRY;
+  }
+
+  // Fonction helper pour convertir un landmark en coordonnées [0-100]
+  const pick = (index: number): [number, number] => {
+    const point = landmarks[index] ?? landmarks[0];
+    return [point.x * 100, point.y * 100];
+  };
+
+  // Fonction helper pour créer un point intermédiaire
+  const mid = (p1: [number, number], p2: [number, number]): [number, number] => [
+    (p1[0] + p2[0]) / 2,
+    (p1[1] + p2[1]) / 2,
+  ];
+
+  // Fonction helper pour déplacer un point selon un vecteur
+  const offset = (
+    p: [number, number],
+    dx: number,
+    dy: number
+  ): [number, number] => [p[0] + dx, p[1] + dy];
+
+  // === Points clés anatomiques ===
+  // Contour du visage
+  const forehead = pick(10); // Haut du front
+  const leftTemple = pick(127); // Temple gauche
+  const rightTemple = pick(356); // Temple droite
+  const leftCheek = pick(234); // Pommette gauche
+  const rightCheek = pick(454); // Pommette droite
+  const leftJaw = pick(172); // Mâchoire gauche
+  const rightJaw = pick(397); // Mâchoire droite
+  const chin = pick(152); // Menton
+
+  // Yeux
+  const leftEyeInner = pick(133); // Coin interne œil gauche
+  const leftEyeOuter = pick(33); // Coin externe œil gauche
+  const leftEyeTop = pick(159); // Haut paupière gauche
+  const leftEyeBottom = pick(145); // Bas paupière gauche
+  const rightEyeInner = pick(362); // Coin interne œil droit
+  const rightEyeOuter = pick(263); // Coin externe œil droit
+  const rightEyeTop = pick(386); // Haut paupière droite
+  const rightEyeBottom = pick(374); // Bas paupière droite
+
+  // Sourcils
+  const leftBrowInner = pick(70); // Sourcil gauche interne
+  const leftBrowArch = pick(107); // Arc sourcil gauche
+  const leftBrowOuter = pick(66); // Sourcil gauche externe
+  const rightBrowInner = pick(300); // Sourcil droit interne
+  const rightBrowArch = pick(336); // Arc sourcil droit
+  const rightBrowOuter = pick(296); // Sourcil droit externe
+
+  // Nez
+  const noseBridge = pick(6); // Pont du nez
+  const noseTip = pick(4); // Pointe du nez
+  const leftNostril = pick(241); // Narine gauche
+  const rightNostril = pick(461); // Narine droite
+
+  // Bouche
+  const mouthLeft = pick(61); // Coin gauche bouche
+  const mouthRight = pick(291); // Coin droit bouche
+  const upperLipTop = pick(0); // Haut lèvre supérieure
+  const upperLipBottom = pick(13); // Bas lèvre supérieure
+  const lowerLipTop = pick(14); // Haut lèvre inférieure
+  const lowerLipBottom = pick(17); // Bas lèvre inférieure
+
+  // === Calculs de dimensions pour proportions anatomiques ===
+  const eyeDistance = Math.abs(rightEyeInner[0] - leftEyeInner[0]);
+  const faceWidth = Math.abs(rightCheek[0] - leftCheek[0]);
+  const faceHeight = Math.abs(chin[1] - forehead[1]);
+
+  // Ajustements selon le sexe (différences anatomiques)
+  const foreheadWidthFactor = model === "XY" ? 1.05 : 1.0;
+  const jawWidthFactor = model === "XY" ? 1.08 : 0.98;
+
+  const zones: ZoneGeometry[] = [];
+
+  // === 1. FRONT (FRONTAL) ===
+  const foreheadMargin = eyeDistance * 0.55 * foreheadWidthFactor;
+  zones.push({
+    id: "frontal",
+    points: [
+      offset(forehead, -foreheadMargin, -faceHeight * 0.02),
+      offset(forehead, foreheadMargin, -faceHeight * 0.02),
+      offset(rightBrowOuter, eyeDistance * 0.12, -faceHeight * 0.01),
+      mid(rightBrowArch, rightBrowInner),
+      mid(leftBrowInner, leftBrowArch),
+      offset(leftBrowOuter, -eyeDistance * 0.12, -faceHeight * 0.01),
+    ],
+  });
+
+  // === 2. GLABELLE (entre les sourcils) ===
+  zones.push({
+    id: "glabella",
+    points: [
+      offset(leftBrowInner, -eyeDistance * 0.1, -faceHeight * 0.012),
+      offset(rightBrowInner, eyeDistance * 0.1, -faceHeight * 0.012),
+      offset(noseBridge, eyeDistance * 0.12, faceHeight * 0.025),
+      offset(noseBridge, -eyeDistance * 0.12, faceHeight * 0.025),
+    ],
+  });
+
+  // === 3. TEMPE GAUCHE (LEFT TEMPLE) ===
+  zones.push({
+    id: "temporal_left",
+    points: [
+      offset(leftBrowOuter, -eyeDistance * 0.18, -faceHeight * 0.02),
+      offset(leftTemple, -eyeDistance * 0.12, -faceHeight * 0.01),
+      offset(leftTemple, -eyeDistance * 0.05, faceHeight * 0.1),
+      offset(leftBrowArch, -eyeDistance * 0.12, faceHeight * 0.02),
+    ],
+  });
+
+  // === 4. TEMPE DROITE (RIGHT TEMPLE) ===
+  zones.push({
+    id: "temporal_right",
+    points: [
+      offset(rightBrowOuter, eyeDistance * 0.18, -faceHeight * 0.02),
+      offset(rightTemple, eyeDistance * 0.12, -faceHeight * 0.01),
+      offset(rightTemple, eyeDistance * 0.05, faceHeight * 0.1),
+      offset(rightBrowArch, eyeDistance * 0.12, faceHeight * 0.02),
+    ],
+  });
+
+  // === 5. RÉGION PÉRI-ORBITAIRE GAUCHE (œil complet) ===
+  zones.push({
+    id: "periorbital_left",
+    points: [
+      offset(leftBrowInner, -eyeDistance * 0.05, -faceHeight * 0.01),
+      offset(leftBrowArch, 0, -faceHeight * 0.015),
+      offset(leftBrowOuter, eyeDistance * 0.08, -faceHeight * 0.01),
+      offset(leftEyeOuter, eyeDistance * 0.1, 0),
+      offset(leftEyeOuter, eyeDistance * 0.08, faceHeight * 0.025),
+      offset(leftEyeBottom, 0, faceHeight * 0.03),
+      offset(leftEyeInner, -eyeDistance * 0.05, faceHeight * 0.025),
+      offset(leftEyeInner, -eyeDistance * 0.05, -faceHeight * 0.005),
+    ],
+  });
+
+  // === 6. RÉGION PÉRI-ORBITAIRE DROITE ===
+  zones.push({
+    id: "periorbital_right",
+    points: [
+      offset(rightBrowInner, eyeDistance * 0.05, -faceHeight * 0.01),
+      offset(rightBrowArch, 0, -faceHeight * 0.015),
+      offset(rightBrowOuter, -eyeDistance * 0.08, -faceHeight * 0.01),
+      offset(rightEyeOuter, -eyeDistance * 0.1, 0),
+      offset(rightEyeOuter, -eyeDistance * 0.08, faceHeight * 0.025),
+      offset(rightEyeBottom, 0, faceHeight * 0.03),
+      offset(rightEyeInner, eyeDistance * 0.05, faceHeight * 0.025),
+      offset(rightEyeInner, eyeDistance * 0.05, -faceHeight * 0.005),
+    ],
+  });
+
+  // === 7. POMMETTE GAUCHE (MALAR LEFT) ===
+  zones.push({
+    id: "malar_left",
+    points: [
+      offset(leftEyeBottom, -eyeDistance * 0.08, faceHeight * 0.04),
+      offset(leftCheek, -faceWidth * 0.1, -faceHeight * 0.02),
+      offset(leftCheek, -faceWidth * 0.08, faceHeight * 0.1),
+      offset(leftNostril, -eyeDistance * 0.2, faceHeight * 0.04),
+      offset(leftEyeBottom, -eyeDistance * 0.05, faceHeight * 0.02),
+    ],
+  });
+
+  // === 8. POMMETTE DROITE (MALAR RIGHT) ===
+  zones.push({
+    id: "malar_right",
+    points: [
+      offset(rightEyeBottom, eyeDistance * 0.08, faceHeight * 0.04),
+      offset(rightCheek, faceWidth * 0.1, -faceHeight * 0.02),
+      offset(rightCheek, faceWidth * 0.08, faceHeight * 0.1),
+      offset(rightNostril, eyeDistance * 0.2, faceHeight * 0.04),
+      offset(rightEyeBottom, eyeDistance * 0.05, faceHeight * 0.02),
+    ],
+  });
+
+  // === 9. NEZ (NASAL) ===
+  zones.push({
+    id: "nasal",
+    points: [
+      offset(noseBridge, -eyeDistance * 0.12, faceHeight * 0.01),
+      offset(noseBridge, eyeDistance * 0.12, faceHeight * 0.01),
+      offset(noseTip, eyeDistance * 0.18, 0),
+      offset(rightNostril, eyeDistance * 0.08, faceHeight * 0.015),
+      offset(noseTip, 0, faceHeight * 0.02),
+      offset(leftNostril, -eyeDistance * 0.08, faceHeight * 0.015),
+      offset(noseTip, -eyeDistance * 0.18, 0),
+    ],
+  });
+
+  // === 10. SILLON NASO-LABIAL GAUCHE ===
+  zones.push({
+    id: "nasolabial_left",
+    points: [
+      offset(leftNostril, -eyeDistance * 0.1, faceHeight * 0.01),
+      offset(leftNostril, -eyeDistance * 0.18, faceHeight * 0.08),
+      offset(mouthLeft, -eyeDistance * 0.15, 0),
+      offset(mouthLeft, -eyeDistance * 0.05, -faceHeight * 0.03),
+      offset(leftNostril, -eyeDistance * 0.05, faceHeight * 0.02),
+    ],
+  });
+
+  // === 11. SILLON NASO-LABIAL DROIT ===
+  zones.push({
+    id: "nasolabial_right",
+    points: [
+      offset(rightNostril, eyeDistance * 0.1, faceHeight * 0.01),
+      offset(rightNostril, eyeDistance * 0.18, faceHeight * 0.08),
+      offset(mouthRight, eyeDistance * 0.15, 0),
+      offset(mouthRight, eyeDistance * 0.05, -faceHeight * 0.03),
+      offset(rightNostril, eyeDistance * 0.05, faceHeight * 0.02),
+    ],
+  });
+
+  // === 12. RÉGION PÉRI-ORALE (autour bouche) ===
+  zones.push({
+    id: "perioral",
+    points: [
+      offset(mouthLeft, -eyeDistance * 0.12, -faceHeight * 0.025),
+      offset(upperLipTop, 0, -faceHeight * 0.025),
+      offset(mouthRight, eyeDistance * 0.12, -faceHeight * 0.025),
+      offset(mouthRight, eyeDistance * 0.12, faceHeight * 0.025),
+      offset(lowerLipBottom, 0, faceHeight * 0.025),
+      offset(mouthLeft, -eyeDistance * 0.12, faceHeight * 0.025),
+    ],
+  });
+
+  // === 13. LÈVRE SUPÉRIEURE (LABIAL UPPER) ===
+  zones.push({
+    id: "labial_upper",
+    points: [
+      offset(mouthLeft, -eyeDistance * 0.02, -faceHeight * 0.008),
+      offset(upperLipTop, 0, -faceHeight * 0.012),
+      offset(mouthRight, eyeDistance * 0.02, -faceHeight * 0.008),
+      offset(mouthRight, eyeDistance * 0.02, faceHeight * 0.002),
+      mid(mouthRight, upperLipBottom),
+      mid(mouthLeft, upperLipBottom),
+      offset(mouthLeft, -eyeDistance * 0.02, faceHeight * 0.002),
+    ],
+  });
+
+  // === 14. LÈVRE INFÉRIEURE (LABIAL LOWER) ===
+  zones.push({
+    id: "labial_lower",
+    points: [
+      offset(mouthLeft, -eyeDistance * 0.02, -faceHeight * 0.002),
+      mid(mouthLeft, lowerLipTop),
+      mid(mouthRight, lowerLipTop),
+      offset(mouthRight, eyeDistance * 0.02, -faceHeight * 0.002),
+      offset(mouthRight, eyeDistance * 0.02, faceHeight * 0.008),
+      offset(lowerLipBottom, 0, faceHeight * 0.012),
+      offset(mouthLeft, -eyeDistance * 0.02, faceHeight * 0.008),
+    ],
+  });
+
+  // === 15. MENTON (CHIN) ===
+  zones.push({
+    id: "chin",
+    points: [
+      offset(lowerLipBottom, -eyeDistance * 0.25, faceHeight * 0.025),
+      offset(lowerLipBottom, eyeDistance * 0.25, faceHeight * 0.025),
+      offset(chin, eyeDistance * 0.3 * jawWidthFactor, 0),
+      offset(chin, eyeDistance * 0.25 * jawWidthFactor, faceHeight * 0.035),
+      offset(chin, -eyeDistance * 0.25 * jawWidthFactor, faceHeight * 0.035),
+      offset(chin, -eyeDistance * 0.3 * jawWidthFactor, 0),
+    ],
+  });
+
+  // === 16. MÂCHOIRE GAUCHE (MANDIBULAR LEFT) ===
+  zones.push({
+    id: "mandibular_left",
+    points: [
+      offset(mouthLeft, -eyeDistance * 0.2, faceHeight * 0.04),
+      offset(leftCheek, -faceWidth * 0.05, faceHeight * 0.12),
+      offset(leftJaw, -eyeDistance * 0.05 * jawWidthFactor, faceHeight * 0.03),
+      offset(chin, -eyeDistance * 0.25 * jawWidthFactor, faceHeight * 0.02),
+      offset(chin, -eyeDistance * 0.15, -faceHeight * 0.01),
+    ],
+  });
+
+  // === 17. MÂCHOIRE DROITE (MANDIBULAR RIGHT) ===
+  zones.push({
+    id: "mandibular_right",
+    points: [
+      offset(mouthRight, eyeDistance * 0.2, faceHeight * 0.04),
+      offset(rightCheek, faceWidth * 0.05, faceHeight * 0.12),
+      offset(rightJaw, eyeDistance * 0.05 * jawWidthFactor, faceHeight * 0.03),
+      offset(chin, eyeDistance * 0.25 * jawWidthFactor, faceHeight * 0.02),
+      offset(chin, eyeDistance * 0.15, -faceHeight * 0.01),
+    ],
+  });
+
+  return zones;
+}
+
 const DEFAULT_ZONE_GEOMETRY: ZoneGeometry[] = [
   {
     id: "frontal",
@@ -347,6 +652,7 @@ export default function AnalysisPage() {
   const [maskFit, setMaskFit] = useState({ scale: 1, offset_x: 0, offset_y: 0 });
   const [autoFit, setAutoFit] = useState({ scale: 1, offset_x: 0, offset_y: 0 });
   const [autoFitEnabled, setAutoFitEnabled] = useState(true);
+  const [faceLandmarks, setFaceLandmarks] = useState<{ x: number; y: number; z: number }[] | null>(null);
   const landmarkerRef = useRef<FaceLandmarker | null>(null);
 
   const storageBucket = useMemo(
@@ -538,13 +844,21 @@ export default function AnalysisPage() {
   }, [model]);
 
   const calibratedGeometry = useMemo(() => {
-    if (!calibration || Object.keys(calibration).length === 0) {
-      return DEFAULT_ZONE_GEOMETRY;
+    // Si on a les landmarks MediaPipe, utiliser la génération intelligente
+    if (faceLandmarks && faceLandmarks.length >= 478) {
+      return generateIntelligentZones(faceLandmarks, model as "XX" | "XY");
     }
-    return Object.entries(calibration)
-      .filter(([, points]) => Array.isArray(points) && points.length > 2)
-      .map(([id, points]) => ({ id, points }));
-  }, [calibration]);
+
+    // Sinon, utiliser la calibration manuelle si disponible
+    if (calibration && Object.keys(calibration).length > 0) {
+      return Object.entries(calibration)
+        .filter(([, points]) => Array.isArray(points) && points.length > 2)
+        .map(([id, points]) => ({ id, points }));
+    }
+
+    // En dernier recours, utiliser les zones par défaut
+    return DEFAULT_ZONE_GEOMETRY;
+  }, [faceLandmarks, calibration, model]);
 
   useEffect(() => {
     async function getLandmarker() {
@@ -583,6 +897,9 @@ export default function AnalysisPage() {
         if (!face || face.length === 0) {
           return;
         }
+
+        // Sauvegarder les landmarks pour la génération intelligente des zones
+        setFaceLandmarks(face);
 
         const pick = (index: number) => face[index] ?? face[0];
         const leftEyeOuter = pick(33);
