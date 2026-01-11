@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
+
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 
@@ -65,11 +65,465 @@ function highlightKeywords(text: string): React.ReactNode {
   return parts.length > 0 ? parts : text;
 }
 
-type ZoneMeta = {
-  id: string;
-  label: string;
-  description: string | null;
-};
+/**
+ * Fonction pour formater les messages du chat avec mise en forme améliorée
+ */
+function formatChatMessage(text: string): React.ReactNode {
+  if (!text) return text;
+
+  const parts: React.ReactNode[] = [];
+  const lines = text.split('\n');
+
+  lines.forEach((line, lineIndex) => {
+    if (!line.trim()) {
+      // Ligne vide - ajouter de l'espace
+      parts.push(<br key={`br-${lineIndex}`} />);
+      return;
+    }
+
+    // Détecter les titres/sections (lignes se terminant par :)
+    if (line.trim().endsWith(':') && line.length < 100) {
+      parts.push(
+        <div key={`title-${lineIndex}`} className="mt-3 mb-1 font-bold text-emerald-800">
+          {line}
+        </div>
+      );
+      return;
+    }
+
+    // Détecter les listes numérotées (1., 2., etc.)
+    const numberMatch = line.match(/^(\d+)\.\s+(.+)/);
+    if (numberMatch) {
+      const [, number, content] = numberMatch;
+      parts.push(
+        <div key={`num-${lineIndex}`} className="mt-2 flex gap-2">
+          <span className="font-bold text-emerald-700 flex-shrink-0">{number}.</span>
+          <span>{highlightKeywords(content)}</span>
+        </div>
+      );
+      return;
+    }
+
+    // Détecter les listes à puces (-, •, *)
+    const bulletMatch = line.match(/^[\s]*[-•*]\s+(.+)/);
+    if (bulletMatch) {
+      const content = bulletMatch[1];
+      parts.push(
+        <div key={`bullet-${lineIndex}`} className="mt-1 flex gap-2 ml-4">
+          <span className="text-emerald-600 flex-shrink-0">•</span>
+          <span>{highlightKeywords(content)}</span>
+        </div>
+      );
+      return;
+    }
+
+    // Ligne normale
+    parts.push(
+      <div key={`line-${lineIndex}`} className="mt-2">
+        {highlightKeywords(line)}
+      </div>
+    );
+  });
+
+  return <>{parts}</>;
+}
+
+/**
+ * Configuration des traitements de médecine esthétique faciale
+ * avec prompts optimisés pour Nano Banana Pro
+ */
+const AESTHETIC_TREATMENTS = [
+  // === INJECTIONS ACIDE HYALURONIQUE ===
+  {
+    id: "ha_lips",
+    label: "Injection acide hyaluronique - Lèvres",
+    category: "Acide Hyaluronique",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "subtile augmentation de 0.5ml, contours naturels, volumes discrets",
+        2: "augmentation modérée de 1ml, définition améliorée, hydratation visible",
+        3: "augmentation prononcée de 1.5-2ml, volumes bien définis, projection marquée"
+      };
+      return `Photo portrait médical : augmentation volumétrique des lèvres par acide hyaluronique. ${intensityMap[intensity as 1|2|3]}. Maintenir symétrie et proportions faciales. Résultat naturel, texture lisse, sans déformation. Même personne, même angle, même éclairage. Rendu photoréaliste médical.`;
+    }
+  },
+  {
+    id: "ha_cheeks",
+    label: "Injection acide hyaluronique - Pommettes",
+    category: "Acide Hyaluronique",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "restauration subtile volume malaire, projection légère",
+        2: "augmentation modérée zone malaire, définition osseuse améliorée",
+        3: "restructuration prononcée pommettes, projection haute visible"
+      };
+      return `Photo portrait médical : injection acide hyaluronique zone malaire. ${intensityMap[intensity as 1|2|3]}. Respecter architecture osseuse naturelle, symétrie faciale préservée. Résultat harmonieux sans excès. Même personne, même angle. Photoréalisme médical.`;
+    }
+  },
+  {
+    id: "ha_jawline",
+    label: "Injection acide hyaluronique - Jawline",
+    category: "Acide Hyaluronique",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "définition subtile ligne mandibulaire, angle discret",
+        2: "restructuration modérée jawline, angulation visible",
+        3: "définition prononcée contour mandibulaire, angle marqué"
+      };
+      return `Photo portrait médical : injection acide hyaluronique ligne mandibulaire. ${intensityMap[intensity as 1|2|3]}. Définition contour inférieur visage, symétrie bilatérale. Résultat masculinisant ou féminisant selon morphologie. Photoréalisme médical.`;
+    }
+  },
+  {
+    id: "ha_nasolabial",
+    label: "Injection acide hyaluronique - Sillons nasogéniens",
+    category: "Acide Hyaluronique",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "atténuation subtile plis nasogéniens, comblement léger",
+        2: "correction modérée sillons, atténuation visible des plis",
+        3: "comblement prononcé, effacement marqué des sillons"
+      };
+      return `Photo portrait médical : injection acide hyaluronique sillons nasogéniens. ${intensityMap[intensity as 1|2|3]}. Atténuation plis sans aplatissement excessif, maintien expressions naturelles. Photoréalisme médical.`;
+    }
+  },
+  {
+    id: "ha_tear_trough",
+    label: "Injection acide hyaluronique - Cernes/Vallée des larmes",
+    category: "Acide Hyaluronique",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "comblement subtil vallée lacrymale, atténuation cernes",
+        2: "correction modérée creux sous-orbitaire, regard reposé",
+        3: "comblement prononcé, effacement marqué cernes et creux"
+      };
+      return `Photo portrait médical : injection acide hyaluronique vallée lacrymale. ${intensityMap[intensity as 1|2|3]}. Atténuation cernes et creux sous-orbitaires, regard rajeuni sans effet Tyndall. Photoréalisme médical.`;
+    }
+  },
+  {
+    id: "ha_temples",
+    label: "Injection acide hyaluronique - Tempes",
+    category: "Acide Hyaluronique",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "restauration subtile volume temporal, légère convexité",
+        2: "augmentation modérée tempes, correction creusement visible",
+        3: "restauration prononcée volume temporal, rajeunissement marqué"
+      };
+      return `Photo portrait médical : injection acide hyaluronique région temporale. ${intensityMap[intensity as 1|2|3]}. Restauration volume perdu, correction creusement temporal. Résultat harmonieux avec tiers supérieur. Photoréalisme médical.`;
+    }
+  },
+  {
+    id: "ha_chin",
+    label: "Injection acide hyaluronique - Menton",
+    category: "Acide Hyaluronique",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "projection subtile menton, définition légère",
+        2: "augmentation modérée, meilleure projection antérieure",
+        3: "projection prononcée, définition marquée du menton"
+      };
+      return `Photo portrait médical : injection acide hyaluronique menton. ${intensityMap[intensity as 1|2|3]}. Amélioration projection et définition, équilibre profil facial. Résultat harmonieux. Photoréalisme médical.`;
+    }
+  },
+  {
+    id: "ha_marionette",
+    label: "Injection acide hyaluronique - Plis d'amertume",
+    category: "Acide Hyaluronique",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "atténuation subtile plis commissures, légère amélioration",
+        2: "correction modérée plis d'amertume, rajeunissement visible",
+        3: "comblement prononcé, effacement marqué aspect triste"
+      };
+      return `Photo portrait médical : injection acide hyaluronique plis d'amertume. ${intensityMap[intensity as 1|2|3]}. Atténuation plis commissures labiales, correction aspect triste. Expression plus détendue. Photoréalisme médical.`;
+    }
+  },
+
+  // === TOXINE BOTULIQUE ===
+  {
+    id: "botox_forehead",
+    label: "Toxine botulique - Rides frontales",
+    category: "Toxine Botulique",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "atténuation subtile rides horizontales front, mobilité préservée",
+        2: "lissage modéré rides frontales, front détendu naturel",
+        3: "lissage prononcé, front lisse au repos et en mouvement"
+      };
+      return `Photo portrait médical : traitement toxine botulique front. ${intensityMap[intensity as 1|2|3]}. Réduction rides horizontales sans effet figé. Expressions naturelles préservées. Photoréalisme médical.`;
+    }
+  },
+  {
+    id: "botox_glabella",
+    label: "Toxine botulique - Rides glabellaires (lion)",
+    category: "Toxine Botulique",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "atténuation subtile rides inter-sourcilières, détente légère",
+        2: "lissage modéré région glabellaire, expression détendue",
+        3: "lissage prononcé, effacement marqué rides du lion"
+      };
+      return `Photo portrait médical : traitement toxine botulique glabelle. ${intensityMap[intensity as 1|2|3]}. Atténuation rides inter-sourcilières, regard adouci. Expression moins sévère. Photoréalisme médical.`;
+    }
+  },
+  {
+    id: "botox_crowsfeet",
+    label: "Toxine botulique - Pattes d'oie",
+    category: "Toxine Botulique",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "atténuation subtile rides péri-orbitaires latérales, sourire naturel",
+        2: "lissage modéré pattes d'oie, regard rajeuni",
+        3: "lissage prononcé contour externe yeux, effacement rides"
+      };
+      return `Photo portrait médical : traitement toxine botulique pattes d'oie. ${intensityMap[intensity as 1|2|3]}. Atténuation rides péri-orbitaires, regard ouvert et reposé. Sourire naturel préservé. Photoréalisme médical.`;
+    }
+  },
+  {
+    id: "botox_bunny",
+    label: "Toxine botulique - Rides du lapin",
+    category: "Toxine Botulique",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "atténuation subtile rides nasales transverses",
+        2: "lissage modéré rides du lapin, harmonie nasale",
+        3: "lissage prononcé rides transverses nez"
+      };
+      return `Photo portrait médical : traitement toxine botulique rides du lapin. ${intensityMap[intensity as 1|2|3]}. Atténuation rides transverses racine nasale. Résultat discret. Photoréalisme médical.`;
+    }
+  },
+  {
+    id: "botox_lip_flip",
+    label: "Toxine botulique - Lip flip",
+    category: "Toxine Botulique",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "éversion subtile lèvre supérieure, ourlet léger",
+        2: "lip flip modéré, lèvre supérieure plus visible",
+        3: "éversion prononcée, ourlet marqué lèvre supérieure"
+      };
+      return `Photo portrait médical : lip flip par toxine botulique. ${intensityMap[intensity as 1|2|3]}. Éversion lèvre supérieure sans volume ajouté. Résultat naturel, sourire préservé. Photoréalisme médical.`;
+    }
+  },
+  {
+    id: "botox_neck",
+    label: "Toxine botulique - Bandes platysmales",
+    category: "Toxine Botulique",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "atténuation subtile bandes cervicales, détente légère",
+        2: "relaxation modérée platysma, cou plus lisse",
+        3: "relaxation prononcée, effacement bandes platysmales"
+      };
+      return `Photo portrait médical : traitement toxine botulique platysma. ${intensityMap[intensity as 1|2|3]}. Atténuation bandes cervicales, cou rajeuni. Contour cervical amélioré. Photoréalisme médical.`;
+    }
+  },
+  {
+    id: "botox_gummy_smile",
+    label: "Toxine botulique - Sourire gingival",
+    category: "Toxine Botulique",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "réduction subtile exposition gingivale au sourire",
+        2: "correction modérée sourire gingival, harmonie améliorée",
+        3: "réduction prononcée exposition gencive supérieure"
+      };
+      return `Photo portrait médical : traitement toxine botulique sourire gingival. ${intensityMap[intensity as 1|2|3]}. Réduction exposition gingivale, sourire plus harmonieux. Expressions naturelles. Photoréalisme médical.`;
+    }
+  },
+  {
+    id: "botox_masseter",
+    label: "Toxine botulique - Masséters (slim face)",
+    category: "Toxine Botulique",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "amincissement subtil tiers inférieur, définition légère",
+        2: "réduction modérée volume masséter, visage affiné",
+        3: "amincissement prononcé, visage en V marqué"
+      };
+      return `Photo portrait médical : traitement toxine botulique masséters. ${intensityMap[intensity as 1|2|3]}. Amincissement tiers inférieur visage, contour affiné. Effet slimming naturel. Photoréalisme médical.`;
+    }
+  },
+
+  // === SKINBOOSTERS & MESOTHERAPIE ===
+  {
+    id: "skinbooster_face",
+    label: "Skinbooster - Visage complet",
+    category: "Skinboosters",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "amélioration subtile éclat et hydratation cutanée",
+        2: "amélioration modérée texture, hydratation visible, glow naturel",
+        3: "amélioration prononcée qualité peau, éclat marqué, texture lissée"
+      };
+      return `Photo portrait médical : traitement skinbooster visage. ${intensityMap[intensity as 1|2|3]}. Amélioration texture, hydratation, éclat cutané. Peau rebondie et lumineuse. Grain de peau affiné. Photoréalisme médical.`;
+    }
+  },
+  {
+    id: "mesotherapy_face",
+    label: "Mésothérapie - Revitalisation faciale",
+    category: "Mésothérapie",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "revitalisation subtile, teint légèrement unifié",
+        2: "revitalisation modérée, éclat visible, teint homogène",
+        3: "revitalisation prononcée, peau éclatante, texture optimisée"
+      };
+      return `Photo portrait médical : mésothérapie revitalisante faciale. ${intensityMap[intensity as 1|2|3]}. Amélioration éclat, uniformisation teint, hydratation profonde. Peau revitalisée. Photoréalisme médical.`;
+    }
+  },
+
+  // === FILS TENSEURS ===
+  {
+    id: "threads_lower_face",
+    label: "Fils tenseurs - Ovale du visage",
+    category: "Fils Tenseurs",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "redéfinition subtile ovale, légère amélioration contours",
+        2: "lifting modéré tiers inférieur, ovale redéfini",
+        3: "lifting prononcé, redéfinition marquée jawline et ovale"
+      };
+      return `Photo portrait médical : fils tenseurs ovale du visage. ${intensityMap[intensity as 1|2|3]}. Redéfinition contours, lifting tiers inférieur sans chirurgie. Résultat naturel. Photoréalisme médical.`;
+    }
+  },
+  {
+    id: "threads_midface",
+    label: "Fils tenseurs - Tiers moyen",
+    category: "Fils Tenseurs",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "lifting subtil zone malaire, légère remontée",
+        2: "lifting modéré tiers moyen, pommettes rehaussées",
+        3: "lifting prononcé, rajeunissement marqué tiers moyen"
+      };
+      return `Photo portrait médical : fils tenseurs tiers moyen. ${intensityMap[intensity as 1|2|3]}. Remontée pommettes, atténuation relâchement, rajeunissement harmonieux. Photoréalisme médical.`;
+    }
+  },
+  {
+    id: "threads_neck",
+    label: "Fils tenseurs - Cou",
+    category: "Fils Tenseurs",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "amélioration subtile tonicité cervicale",
+        2: "lifting modéré cou, peau plus tendue",
+        3: "lifting prononcé cervical, redéfinition angle cervico-mentonnier"
+      };
+      return `Photo portrait médical : fils tenseurs cervicaux. ${intensityMap[intensity as 1|2|3]}. Amélioration tonicité cou, atténuation relâchement cutané. Contour cervical rajeuni. Photoréalisme médical.`;
+    }
+  },
+
+  // === LASERS & TECHNOLOGIES ÉNERGÉTIQUES ===
+  {
+    id: "laser_pigment",
+    label: "Laser pigmentaire - Taches brunes",
+    category: "Lasers",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "atténuation subtile hyperpigmentation, teint légèrement unifié",
+        2: "réduction modérée taches pigmentaires, uniformisation visible",
+        3: "effacement prononcé lentigos et taches, teint homogène"
+      };
+      return `Photo portrait médical : traitement laser pigmentaire. ${intensityMap[intensity as 1|2|3]}. Atténuation taches brunes, lentigos, hyperpigmentation. Teint unifié et lumineux. Photoréalisme médical.`;
+    }
+  },
+  {
+    id: "laser_vascular",
+    label: "Laser vasculaire - Couperose/Rougeurs",
+    category: "Lasers",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "atténuation subtile rougeurs et télangiectasies",
+        2: "réduction modérée couperose, teint apaisé",
+        3: "effacement prononcé vaisseaux dilatés, teint uniforme"
+      };
+      return `Photo portrait médical : traitement laser vasculaire. ${intensityMap[intensity as 1|2|3]}. Atténuation couperose, rougeurs, télangiectasies. Teint homogène sans rougeurs. Photoréalisme médical.`;
+    }
+  },
+  {
+    id: "laser_resurfacing",
+    label: "Laser fractionné - Resurfacing",
+    category: "Lasers",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "amélioration subtile texture, lissage léger",
+        2: "resurfacing modéré, texture améliorée, pores affinés",
+        3: "resurfacing prononcé, peau lissée, cicatrices atténuées"
+      };
+      return `Photo portrait médical : laser fractionné resurfacing. ${intensityMap[intensity as 1|2|3]}. Amélioration texture cutanée, atténuation cicatrices, pores affinés. Peau lissée. Photoréalisme médical.`;
+    }
+  },
+  {
+    id: "rf_microneedling",
+    label: "Radiofréquence micro-needling",
+    category: "Technologies énergétiques",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "amélioration subtile fermeté et texture",
+        2: "raffermissement modéré, tonicité améliorée",
+        3: "raffermissement prononcé, peau visiblement retendue"
+      };
+      return `Photo portrait médical : radiofréquence fractionnée micro-needling. ${intensityMap[intensity as 1|2|3]}. Raffermissement cutané, amélioration texture et tonicité. Résultat tenseur naturel. Photoréalisme médical.`;
+    }
+  },
+  {
+    id: "hifu_lifting",
+    label: "HIFU - Lifting par ultrasons",
+    category: "Technologies énergétiques",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "lifting subtil profond, amélioration légère tonicité",
+        2: "lifting modéré SMAS, redéfinition contours visible",
+        3: "lifting prononcé, effet tenseur marqué"
+      };
+      return `Photo portrait médical : HIFU lifting ultrasonique. ${intensityMap[intensity as 1|2|3]}. Lifting profond sans chirurgie, redéfinition ovale, raffermissement marqué. Photoréalisme médical.`;
+    }
+  },
+
+  // === PEELINGS ===
+  {
+    id: "peeling_superficial",
+    label: "Peeling superficiel - Éclat",
+    category: "Peelings",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "amélioration subtile éclat et uniformité teint",
+        2: "effet glow modéré, teint lumineux et unifié",
+        3: "éclat prononcé, peau lumineuse, texture affinée"
+      };
+      return `Photo portrait médical : peeling superficiel. ${intensityMap[intensity as 1|2|3]}. Amélioration éclat cutané, uniformisation teint, texture affinée. Effet bonne mine. Photoréalisme médical.`;
+    }
+  },
+  {
+    id: "peeling_medium",
+    label: "Peeling moyen - Anti-âge",
+    category: "Peelings",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "atténuation subtile ridules et irrégularités",
+        2: "amélioration modérée rides, taches, texture",
+        3: "rajeunissement prononcé, peau lissée, teint uniforme"
+      };
+      return `Photo portrait médical : peeling moyen. ${intensityMap[intensity as 1|2|3]}. Atténuation rides, taches, irrégularités. Renouvellement cutané visible. Photoréalisme médical.`;
+    }
+  },
+
+  // === TRAITEMENTS COMBINÉS ===
+  {
+    id: "combo_liquid_facelift",
+    label: "Liquid Facelift - Rajeunissement global",
+    category: "Traitements combinés",
+    promptTemplate: (intensity: number) => {
+      const intensityMap = {
+        1: "rajeunissement subtil multi-zones, harmonisation douce",
+        2: "liquid facelift modéré, restauration volumes et traits",
+        3: "rajeunissement prononcé, transformation harmonieuse globale"
+      };
+      return `Photo portrait médical : liquid facelift combiné. ${intensityMap[intensity as 1|2|3]}. Rajeunissement global par injections multi-zones, restauration volumes, atténuation rides. Résultat harmonieux naturel. Photoréalisme médical.`;
+    }
+  }
+] as const;
 
 type PhotoRow = {
   id: string;
@@ -77,18 +531,24 @@ type PhotoRow = {
   created_at: string;
 };
 
-type ZoneAnalysis = {
+type SessionPhoto = PhotoRow & {
+  angle: string;
+  signedUrl: string;
+};
+
+type FaceLandmark = {
+  x: number;
+  y: number;
+  z?: number;
+};
+
+type ZoneShape = {
   id: string;
-  zone_id: string;
-  result: {
-    summary?: string;
-    observations?: string[];
-    possibleConcerns?: string[];
-    suggestedFocus?: string[];
-    disclaimer?: string;
-    raw?: string;
-  };
-  created_at: string;
+  label: string;
+  points: { x: number; y: number }[];
+  labelX: number;
+  labelY: number;
+  color: string;
 };
 
 type GlobalAnalysis = {
@@ -118,314 +578,432 @@ const REQUIRED_ANGLES = [
   "profile_right",
 ];
 
-type ZoneGeometry = {
-  id: string;
-  points: [number, number][];
+const ANGLE_LABELS: Record<string, string> = {
+  face: "Face",
+  three_quarter_left: "3/4 gauche",
+  three_quarter_right: "3/4 droit",
+  profile_left: "Profil gauche",
+  profile_right: "Profil droit",
 };
 
-/**
- * Génère le contour du visage (masque facial) à partir des landmarks MediaPipe
- */
-function generateFaceMask(
-  landmarks: { x: number; y: number; z: number }[]
-): ZoneGeometry | null {
-  if (!landmarks || landmarks.length < 478) {
+const ZONE_COLORS = [
+  "#22c55e",
+  "#38bdf8",
+  "#f97316",
+  "#e879f9",
+  "#facc15",
+  "#fb7185",
+  "#60a5fa",
+  "#34d399",
+];
+
+const FACE_OVAL_INDICES = [
+  10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379,
+  378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127,
+  162, 21, 54, 103, 67, 109,
+];
+
+const LEFT_EYE_INDICES = [
+  33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246,
+];
+
+const RIGHT_EYE_INDICES = [
+  263, 249, 390, 373, 374, 380, 381, 382, 362, 398, 384, 385, 386, 387, 388, 466,
+];
+
+const MOUTH_OUTER_INDICES = [
+  61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308,
+];
+
+const NOSE_INDICES = [1, 2, 98, 327, 168, 197, 5, 4, 45, 275, 279, 48, 358, 129];
+
+const LEFT_CHEEK_INDICES = [234, 93, 132, 58, 172, 136, 150];
+const RIGHT_CHEEK_INDICES = [454, 323, 361, 288, 397, 365, 379];
+const CHIN_INDICES = [152, 148, 176, 149, 150, 136, 172];
+const JAW_LEFT_INDICES = [172, 136, 150, 149, 176, 148, 152];
+const JAW_RIGHT_INDICES = [397, 365, 379, 378, 400, 377, 152];
+const BROW_INDICES = [70, 63, 105, 66, 107, 336, 296, 334, 293, 300];
+
+function clampZone(value: number) {
+  return Math.min(Math.max(value, 0), 100);
+}
+
+function distance(a: { x: number; y: number }, b: { x: number; y: number }) {
+  return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
+}
+
+function pickPoint(landmarks: FaceLandmark[], index: number) {
+  const point = landmarks[index];
+  if (!point) {
     return null;
   }
+  return { x: point.x * 100, y: point.y * 100 };
+}
 
-  // Utiliser les landmarks du contour du visage MediaPipe
-  // https://github.com/google/mediapipe/blob/master/mediapipe/modules/face_geometry/data/canonical_face_model_uv_visualization.png
-  const faceOvalIndices = [
-    10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288,
-    397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136,
-    172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109
-  ];
+function pointsFromIndices(landmarks: FaceLandmark[], indices: number[]) {
+  return indices
+    .map((index) => pickPoint(landmarks, index))
+    .filter((point): point is { x: number; y: number } => Boolean(point));
+}
 
-  const contourPoints: [number, number][] = faceOvalIndices.map(index => {
-    const point = landmarks[index] ?? landmarks[0];
-    return [point.x * 100, point.y * 100];
+function centroid(points: { x: number; y: number }[]) {
+  const sum = points.reduce(
+    (acc, point) => ({ x: acc.x + point.x, y: acc.y + point.y }),
+    { x: 0, y: 0 }
+  );
+  return { x: sum.x / points.length, y: sum.y / points.length };
+}
+
+function sortPoints(points: { x: number; y: number }[]) {
+  const center = centroid(points);
+  return [...points].sort((a, b) => {
+    const angleA = Math.atan2(a.y - center.y, a.x - center.x);
+    const angleB = Math.atan2(b.y - center.y, b.x - center.x);
+    return angleA - angleB;
   });
+}
 
+function ellipseToPolygon(cx: number, cy: number, rx: number, ry: number, segments = 16) {
+  const points = Array.from({ length: segments }, (_, index) => {
+    const angle = (Math.PI * 2 * index) / segments;
+    return {
+      x: cx + Math.cos(angle) * rx,
+      y: cy + Math.sin(angle) * ry,
+    };
+  });
+  return points.map((point) => ({
+    x: clampZone(point.x),
+    y: clampZone(point.y),
+  }));
+}
+
+function buildPolygonFromIndices(landmarks: FaceLandmark[], indices: number[]) {
+  const points = pointsFromIndices(landmarks, indices);
+  if (points.length < 3) {
+    return null;
+  }
+  return sortPoints(points).map((point) => ({
+    x: clampZone(point.x),
+    y: clampZone(point.y),
+  }));
+}
+
+function createZone(
+  id: string,
+  label: string,
+  points: { x: number; y: number }[] | null,
+  fallback: { cx: number; cy: number; rx: number; ry: number },
+  color: string
+): ZoneShape | null {
+  const resolvedPoints =
+    points && points.length >= 3
+      ? points
+      : ellipseToPolygon(fallback.cx, fallback.cy, fallback.rx, fallback.ry);
+  if (resolvedPoints.length < 3) {
+    return null;
+  }
+  const center = centroid(resolvedPoints);
   return {
-    id: "face_mask",
-    points: contourPoints
+    id,
+    label,
+    points: resolvedPoints,
+    labelX: clampZone(center.x),
+    labelY: clampZone(center.y),
+    color,
   };
 }
 
-/**
- * Adapte les zones de calibration à la morphologie du visage détecté
- * en appliquant une transformation proportionnelle
- */
-function adaptZonesToFace(
-  calibrationZones: ZoneGeometry[],
-  landmarks: { x: number; y: number; z: number }[]
-): ZoneGeometry[] {
-  if (!landmarks || landmarks.length < 478 || calibrationZones.length === 0) {
-    return calibrationZones;
-  }
-
-  // Points clés du visage pour calculer les dimensions réelles
-  const pick = (index: number): [number, number] => {
-    const point = landmarks[index] ?? landmarks[0];
-    return [point.x * 100, point.y * 100];
-  };
-
-  // Points de référence anatomiques
-  const forehead = pick(10);
-  const chin = pick(152);
-  const leftEye = pick(133);
-  const rightEye = pick(362);
+function buildLandmarkInsert(face: FaceLandmark[], photoId: string, sessionId: string) {
+  const pick = (index: number) => face[index] ?? face[0];
+  const leftEye = pick(33);
+  const rightEye = pick(263);
   const noseTip = pick(1);
+  const mouthLeft = pick(61);
+  const mouthRight = pick(291);
+  const chin = pick(152);
+  const forehead = pick(10);
+  const leftTemple = pick(127);
+  const rightTemple = pick(356);
+  const leftJaw = pick(172);
+  const rightJaw = pick(397);
   const leftCheek = pick(234);
   const rightCheek = pick(454);
 
-  // Dimensions du visage détecté
-  const detectedFaceWidth = Math.abs(rightCheek[0] - leftCheek[0]);
-  const detectedFaceHeight = Math.abs(chin[1] - forehead[1]);
-  const detectedCenterX = (leftCheek[0] + rightCheek[0]) / 2;
-  const detectedCenterY = (forehead[1] + chin[1]) / 2;
+  const eyeDistance = Math.sqrt(
+    Math.pow((rightEye.x - leftEye.x) * 100, 2) +
+      Math.pow((rightEye.y - leftEye.y) * 100, 2)
+  );
+  const noseWidth = Math.sqrt(
+    Math.pow((pick(129).x - pick(358).x) * 100, 2) +
+      Math.pow((pick(129).y - pick(358).y) * 100, 2)
+  );
+  const mouthWidth = Math.sqrt(
+    Math.pow((mouthRight.x - mouthLeft.x) * 100, 2) +
+      Math.pow((mouthRight.y - mouthLeft.y) * 100, 2)
+  );
+  const faceWidthAtCheeks = Math.sqrt(
+    Math.pow((rightCheek.x - leftCheek.x) * 100, 2) +
+      Math.pow((rightCheek.y - leftCheek.y) * 100, 2)
+  );
+  const faceWidthAtTemples = Math.sqrt(
+    Math.pow((rightTemple.x - leftTemple.x) * 100, 2) +
+      Math.pow((rightTemple.y - leftTemple.y) * 100, 2)
+  );
+  const faceWidthAtJaw = Math.sqrt(
+    Math.pow((rightJaw.x - leftJaw.x) * 100, 2) +
+      Math.pow((rightJaw.y - leftJaw.y) * 100, 2)
+  );
+  const faceHeight = Math.sqrt(
+    Math.pow((chin.x - forehead.x) * 100, 2) +
+      Math.pow((chin.y - forehead.y) * 100, 2)
+  );
 
-  // Dimensions de référence de la calibration (calculées depuis les zones)
-  const allCalibPoints = calibrationZones.flatMap(z => z.points);
-  const calibXs = allCalibPoints.map(([x]) => x);
-  const calibYs = allCalibPoints.map(([, y]) => y);
-  const calibMinX = Math.min(...calibXs);
-  const calibMaxX = Math.max(...calibXs);
-  const calibMinY = Math.min(...calibYs);
-  const calibMaxY = Math.max(...calibYs);
-  const calibWidth = calibMaxX - calibMinX;
-  const calibHeight = calibMaxY - calibMinY;
-  const calibCenterX = (calibMinX + calibMaxX) / 2;
-  const calibCenterY = (calibMinY + calibMaxY) / 2;
-
-  // Facteurs d'échelle pour adapter les zones
-  const scaleX = detectedFaceWidth / calibWidth;
-  const scaleY = detectedFaceHeight / calibHeight;
-
-  // Transformation proportionnelle de chaque zone
-  return calibrationZones.map(zone => {
-    const adaptedPoints = zone.points.map(([x, y]) => {
-      // Centrer le point par rapport à la calibration
-      const relX = x - calibCenterX;
-      const relY = y - calibCenterY;
-
-      // Appliquer l'échelle proportionnelle
-      const scaledX = relX * scaleX;
-      const scaledY = relY * scaleY;
-
-      // Recentrer sur le visage détecté
-      const finalX = scaledX + detectedCenterX;
-      const finalY = scaledY + detectedCenterY;
-
-      return [finalX, finalY] as [number, number];
-    });
-
-    return {
-      id: zone.id,
-      points: adaptedPoints
-    };
-  });
+  return {
+    photo_id: photoId,
+    session_id: sessionId,
+    landmarks: face.map((point) => ({ x: point.x, y: point.y, z: point.z })),
+    left_eye: { x: leftEye.x * 100, y: leftEye.y * 100 },
+    right_eye: { x: rightEye.x * 100, y: rightEye.y * 100 },
+    nose_tip: { x: noseTip.x * 100, y: noseTip.y * 100 },
+    mouth_left: { x: mouthLeft.x * 100, y: mouthLeft.y * 100 },
+    mouth_right: { x: mouthRight.x * 100, y: mouthRight.y * 100 },
+    chin: { x: chin.x * 100, y: chin.y * 100 },
+    face_width: Math.max(faceWidthAtCheeks, faceWidthAtTemples, faceWidthAtJaw),
+    face_height: faceHeight,
+    eye_distance: eyeDistance,
+    nose_width: noseWidth,
+    mouth_width: mouthWidth,
+    bbox_x: 0,
+    bbox_y: 0,
+    bbox_width: 100,
+    bbox_height: 100,
+    confidence: 1.0,
+    detection_method: "mediapipe",
+    model_version: "1.0.0",
+  };
 }
 
-const DEFAULT_ZONE_GEOMETRY: ZoneGeometry[] = [
-  {
-    id: "frontal",
-    points: [
-      [18, 6],
-      [82, 6],
-      [78, 24],
-      [50, 28],
-      [22, 24],
-    ],
-  },
-  {
-    id: "glabella",
-    points: [
-      [44, 26],
-      [56, 26],
-      [58, 40],
-      [50, 44],
-      [42, 40],
-    ],
-  },
-  {
-    id: "temporal_left",
-    points: [
-      [78, 18],
-      [96, 22],
-      [92, 40],
-      [76, 36],
-    ],
-  },
-  {
-    id: "temporal_right",
-    points: [
-      [4, 22],
-      [22, 18],
-      [24, 36],
-      [8, 40],
-    ],
-  },
-  {
-    id: "peri_orbital_upper_left",
-    points: [
-      [56, 26],
-      [84, 28],
-      [82, 40],
-      [60, 40],
-    ],
-  },
-  {
-    id: "peri_orbital_upper_right",
-    points: [
-      [16, 28],
-      [44, 26],
-      [40, 40],
-      [18, 40],
-    ],
-  },
-  {
-    id: "peri_orbital_lower_left",
-    points: [
-      [58, 40],
-      [82, 40],
-      [80, 52],
-      [62, 52],
-    ],
-  },
-  {
-    id: "peri_orbital_lower_right",
-    points: [
-      [20, 40],
-      [42, 40],
-      [38, 52],
-      [22, 52],
-    ],
-  },
-  {
-    id: "nasal",
-    points: [
-      [44, 40],
-      [56, 40],
-      [60, 70],
-      [50, 74],
-      [40, 70],
-    ],
-  },
-  {
-    id: "malar_left",
-    points: [
-      [60, 48],
-      [88, 52],
-      [86, 66],
-      [64, 64],
-      [56, 56],
-    ],
-  },
-  {
-    id: "malar_right",
-    points: [
-      [12, 52],
-      [40, 48],
-      [44, 56],
-      [36, 64],
-      [14, 66],
-    ],
-  },
-  {
-    id: "nasolabial_left",
-    points: [
-      [56, 60],
-      [70, 60],
-      [72, 76],
-      [58, 76],
-    ],
-  },
-  {
-    id: "nasolabial_right",
-    points: [
-      [30, 60],
-      [44, 60],
-      [42, 76],
-      [28, 76],
-    ],
-  },
-  {
-    id: "perioral",
-    points: [
-      [34, 68],
-      [66, 68],
-      [66, 82],
-      [50, 88],
-      [34, 82],
-    ],
-  },
-  {
-    id: "lip_upper",
-    points: [
-      [38, 70],
-      [62, 70],
-      [60, 78],
-      [50, 80],
-      [40, 78],
-    ],
-  },
-  {
-    id: "lip_lower",
-    points: [
-      [40, 78],
-      [60, 78],
-      [62, 86],
-      [50, 88],
-      [38, 86],
-    ],
-  },
-  {
-    id: "marionette_left",
-    points: [
-      [56, 78],
-      [70, 78],
-      [72, 92],
-      [58, 92],
-    ],
-  },
-  {
-    id: "marionette_right",
-    points: [
-      [28, 78],
-      [44, 78],
-      [42, 92],
-      [26, 92],
-    ],
-  },
-  {
-    id: "chin",
-    points: [
-      [38, 84],
-      [62, 84],
-      [70, 98],
-      [30, 98],
-    ],
-  },
-  {
-    id: "mandibular_left",
-    points: [
-      [70, 82],
-      [90, 90],
-      [78, 100],
-      [60, 90],
-    ],
-  },
-  {
-    id: "mandibular_right",
-    points: [
-      [10, 90],
-      [30, 82],
-      [40, 90],
-      [22, 100],
-    ],
-  },
-];
+function buildFaceZones(landmarks: FaceLandmark[]) {
+  const leftEye = pickPoint(landmarks, 33);
+  const rightEye = pickPoint(landmarks, 263);
+  const noseTip = pickPoint(landmarks, 1);
+  const mouthLeft = pickPoint(landmarks, 61);
+  const mouthRight = pickPoint(landmarks, 291);
+  const mouthUpper = pickPoint(landmarks, 13);
+  const mouthLower = pickPoint(landmarks, 14);
+  const chin = pickPoint(landmarks, 152);
+  const forehead = pickPoint(landmarks, 10);
+  const leftCheek = pickPoint(landmarks, 234);
+  const rightCheek = pickPoint(landmarks, 454);
+  const leftJaw = pickPoint(landmarks, 172);
+  const rightJaw = pickPoint(landmarks, 397);
+  const noseLeft = pickPoint(landmarks, 129);
+  const noseRight = pickPoint(landmarks, 358);
+
+  if (!leftEye || !rightEye || !noseTip || !mouthLeft || !mouthRight || !chin || !forehead) {
+    return [];
+  }
+
+  const eyeCenter = {
+    x: (leftEye.x + rightEye.x) / 2,
+    y: (leftEye.y + rightEye.y) / 2,
+  };
+  const eyeDistance = distance(leftEye, rightEye);
+  const faceHeight = distance(forehead, chin);
+  const mouthCenter = {
+    x: (mouthLeft.x + mouthRight.x) / 2,
+    y: ((mouthUpper?.y ?? mouthLeft.y) + (mouthLower?.y ?? mouthRight.y)) / 2,
+  };
+  const noseCenter = {
+    x: noseTip.x,
+    y: (eyeCenter.y + (mouthUpper?.y ?? mouthCenter.y)) / 2,
+  };
+  const noseWidth = noseLeft && noseRight ? distance(noseLeft, noseRight) : eyeDistance * 0.55;
+  const mouthWidth = distance(mouthLeft, mouthRight);
+
+  const upperFacePoints = pointsFromIndices(landmarks, FACE_OVAL_INDICES).filter(
+    (point) => point.y <= eyeCenter.y + eyeDistance * 0.12
+  );
+  const browPoints = pointsFromIndices(landmarks, BROW_INDICES);
+  const frontalPoints =
+    upperFacePoints.length + browPoints.length >= 3
+      ? sortPoints([...upperFacePoints, ...browPoints])
+      : null;
+
+  const zones = [
+    createZone(
+      "frontal",
+      "Zone frontale",
+      frontalPoints,
+      {
+        cx: eyeCenter.x,
+        cy: clampZone(forehead.y + (eyeCenter.y - forehead.y) * 0.45),
+        rx: eyeDistance * 1.2,
+        ry: Math.max((eyeCenter.y - forehead.y) * 0.6, faceHeight * 0.14),
+      },
+      ZONE_COLORS[0]
+    ),
+    createZone(
+      "glabella",
+      "Zone glabellaire",
+      buildPolygonFromIndices(landmarks, [...BROW_INDICES, 168, 6, 197]),
+      {
+        cx: eyeCenter.x,
+        cy: eyeCenter.y - eyeDistance * 0.15,
+        rx: eyeDistance * 0.32,
+        ry: eyeDistance * 0.22,
+      },
+      ZONE_COLORS[1]
+    ),
+    createZone(
+      "peri_orbital_left",
+      "Contour oeil gauche",
+      buildPolygonFromIndices(landmarks, LEFT_EYE_INDICES),
+      {
+        cx: leftEye.x,
+        cy: leftEye.y,
+        rx: eyeDistance * 0.42,
+        ry: eyeDistance * 0.28,
+      },
+      ZONE_COLORS[2]
+    ),
+    createZone(
+      "peri_orbital_right",
+      "Contour oeil droit",
+      buildPolygonFromIndices(landmarks, RIGHT_EYE_INDICES),
+      {
+        cx: rightEye.x,
+        cy: rightEye.y,
+        rx: eyeDistance * 0.42,
+        ry: eyeDistance * 0.28,
+      },
+      ZONE_COLORS[3]
+    ),
+    createZone(
+      "nasal",
+      "Zone nasale",
+      buildPolygonFromIndices(landmarks, NOSE_INDICES),
+      {
+        cx: noseCenter.x,
+        cy: noseCenter.y,
+        rx: noseWidth * 0.85,
+        ry: faceHeight * 0.16,
+      },
+      ZONE_COLORS[4]
+    ),
+    leftCheek && rightCheek
+      ? createZone(
+          "malar_left",
+          "Pommette gauche",
+          buildPolygonFromIndices(landmarks, LEFT_CHEEK_INDICES),
+          {
+            cx: leftCheek.x,
+            cy: leftCheek.y,
+            rx: eyeDistance * 0.55,
+            ry: eyeDistance * 0.35,
+          },
+          ZONE_COLORS[5]
+        )
+      : null,
+    leftCheek && rightCheek
+      ? createZone(
+          "malar_right",
+          "Pommette droite",
+          buildPolygonFromIndices(landmarks, RIGHT_CHEEK_INDICES),
+          {
+            cx: rightCheek.x,
+            cy: rightCheek.y,
+            rx: eyeDistance * 0.55,
+            ry: eyeDistance * 0.35,
+          },
+          ZONE_COLORS[6]
+        )
+      : null,
+    createZone(
+      "perioral",
+      "Zone peri-orale",
+      buildPolygonFromIndices(landmarks, MOUTH_OUTER_INDICES),
+      {
+        cx: mouthCenter.x,
+        cy: (mouthUpper?.y ?? mouthCenter.y) +
+          (mouthLower ? (mouthLower.y - (mouthUpper?.y ?? mouthCenter.y)) * 0.5 : 0),
+        rx: mouthWidth * 0.65,
+        ry: Math.max(mouthWidth * 0.28, faceHeight * 0.08),
+      },
+      ZONE_COLORS[7]
+    ),
+    createZone(
+      "chin",
+      "Menton",
+      buildPolygonFromIndices(landmarks, CHIN_INDICES),
+      {
+        cx: chin.x,
+        cy: chin.y - faceHeight * 0.08,
+        rx: mouthWidth * 0.5,
+        ry: faceHeight * 0.12,
+      },
+      ZONE_COLORS[0]
+    ),
+    leftJaw
+      ? createZone(
+          "mandibular_left",
+          "Mâchoire gauche",
+          buildPolygonFromIndices(landmarks, JAW_LEFT_INDICES),
+          {
+            cx: leftJaw.x,
+            cy: leftJaw.y - faceHeight * 0.04,
+            rx: eyeDistance * 0.45,
+            ry: faceHeight * 0.12,
+          },
+          ZONE_COLORS[1]
+        )
+      : null,
+    rightJaw
+      ? createZone(
+          "mandibular_right",
+          "Mâchoire droite",
+          buildPolygonFromIndices(landmarks, JAW_RIGHT_INDICES),
+          {
+            cx: rightJaw.x,
+            cy: rightJaw.y - faceHeight * 0.04,
+            rx: eyeDistance * 0.45,
+            ry: faceHeight * 0.12,
+          },
+          ZONE_COLORS[2]
+        )
+      : null,
+  ];
+
+  return zones.filter((zone): zone is ZoneShape => Boolean(zone));
+}
+
+function filterZonesByAngle(zones: ZoneShape[], angle?: string | null) {
+  if (!angle || angle === "face") {
+    return zones;
+  }
+  const leftOnly = new Set(["peri_orbital_left", "malar_left", "mandibular_left"]);
+  const rightOnly = new Set(["peri_orbital_right", "malar_right", "mandibular_right"]);
+  const shared = new Set(["nasal", "perioral", "chin"]);
+  const frontalShared = new Set(["frontal", "glabella"]);
+
+  if (angle === "three_quarter_left") {
+    return zones.filter(
+      (zone) => leftOnly.has(zone.id) || shared.has(zone.id) || frontalShared.has(zone.id)
+    );
+  }
+  if (angle === "three_quarter_right") {
+    return zones.filter(
+      (zone) => rightOnly.has(zone.id) || shared.has(zone.id) || frontalShared.has(zone.id)
+    );
+  }
+  if (angle === "profile_left") {
+    return zones.filter((zone) => leftOnly.has(zone.id) || shared.has(zone.id) || zone.id === "nasal");
+  }
+  if (angle === "profile_right") {
+    return zones.filter((zone) => rightOnly.has(zone.id) || shared.has(zone.id) || zone.id === "nasal");
+  }
+  return zones;
+}
 
 export default function AnalysisPage() {
   const params = useParams();
@@ -434,37 +1012,19 @@ export default function AnalysisPage() {
     ? params.sessionId[0]
     : params?.sessionId;
 
-  const [zones, setZones] = useState<ZoneMeta[]>([]);
   const [facePhoto, setFacePhoto] = useState<PhotoRow | null>(null);
   const [signedUrl, setSignedUrl] = useState("");
-  const [analyses, setAnalyses] = useState<ZoneAnalysis[]>([]);
   const [globalAnalysis, setGlobalAnalysis] = useState<GlobalAnalysis | null>(null);
   const [autoGlobalTriggered, setAutoGlobalTriggered] = useState(false);
-  const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
-  const [model, setModel] = useState("XX");
-  const [status, setStatus] = useState<"idle" | "loading" | "analyzing">(
-    "idle"
-  );
   const [globalStatus, setGlobalStatus] = useState<"idle" | "analyzing">("idle");
   const [error, setError] = useState("");
-  const [calibration, setCalibration] = useState<Record<string, [number, number][]>>(
-    {}
-  );
-  const [zoneExclusions, setZoneExclusions] = useState<
-    Record<string, [number, number][]>
-  >({});
-  const [zoneOverrides, setZoneOverrides] = useState<
-    Record<string, [number, number][]>
-  >({});
-  const [editMode, setEditMode] = useState(false);
-  const [editPoints, setEditPoints] = useState<[number, number][]>([]);
-  const [dragPointIndex, setDragPointIndex] = useState<number | null>(null);
-  const [maskFit, setMaskFit] = useState({ scale: 1, offset_x: 0, offset_y: 0 });
-  const [autoFit, setAutoFit] = useState({ scale: 1, offset_x: 0, offset_y: 0 });
-  const autoFitEnabled = true;
-  const [faceLandmarks, setFaceLandmarks] = useState<{ x: number; y: number; z: number }[] | null>(null);
   const [isCaptureComplete, setIsCaptureComplete] = useState(false);
-  const [hasMaskFit, setHasMaskFit] = useState(false);
+  const [sessionPhotos, setSessionPhotos] = useState<SessionPhoto[]>([]);
+  const [activePhotoId, setActivePhotoId] = useState<string | null>(null);
+  const [showZones, setShowZones] = useState(false);
+  const [zonesByPhoto, setZonesByPhoto] = useState<Record<string, ZoneShape[]>>({});
+  const [zonesStatus, setZonesStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [zonesError, setZonesError] = useState("");
   const [chatMessages, setChatMessages] = useState<
     { role: "user" | "assistant"; content: string }[]
   >([]);
@@ -473,31 +1033,69 @@ export default function AnalysisPage() {
   const [chatError, setChatError] = useState("");
   const [treatmentText, setTreatmentText] = useState("");
   const [visualPrompt, setVisualPrompt] = useState("");
+  const [selectedTreatment, setSelectedTreatment] = useState<string>(AESTHETIC_TREATMENTS[0].id);
+  const [treatmentIntensity, setTreatmentIntensity] = useState<number>(2);
+
+  // Obtenir le traitement actuellement sélectionné
+  const currentTreatment = AESTHETIC_TREATMENTS.find(t => t.id === selectedTreatment);
+
+  // Obtenir le label de l'intensité
+  const getIntensityLabel = (intensity: number) => {
+    switch (intensity) {
+      case 1: return "Subtil";
+      case 2: return "Modéré";
+      case 3: return "Prononcé";
+      default: return "Modéré";
+    }
+  };
+  const galleryRef = useRef<HTMLDivElement | null>(null);
+  const mainImageRef = useRef<HTMLImageElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const landmarkerRef = useRef<FaceLandmarker | null>(null);
+  const drawingRef = useRef<{
+    isDrawing: boolean;
+    lastPoint: { x: number; y: number };
+    rectStart: { x: number; y: number } | null;
+    snapshot: ImageData | null;
+  }>({
+    isDrawing: false,
+    lastPoint: { x: 0, y: 0 },
+    rectStart: null,
+    snapshot: null,
+  });
+  const [drawTool, setDrawTool] = useState<"pen" | "rect">("pen");
+  const [strokeColor, setStrokeColor] = useState("#ef4444");
+  const [strokeWidth, setStrokeWidth] = useState(3);
 
   const storageBucket = useMemo(
     () => process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET,
     []
   );
+  const activePhoto = useMemo(
+    () => sessionPhotos.find((photo) => photo.id === activePhotoId) ?? null,
+    [sessionPhotos, activePhotoId]
+  );
+  const activeZones = activePhoto ? zonesByPhoto[activePhoto.id] ?? null : null;
+
+  useEffect(() => {
+    if (activePhotoId) {
+      return;
+    }
+    if (facePhoto?.id) {
+      setActivePhotoId(facePhoto.id);
+      return;
+    }
+    if (sessionPhotos.length > 0) {
+      setActivePhotoId(sessionPhotos[0].id);
+    }
+  }, [activePhotoId, facePhoto, sessionPhotos]);
 
   useEffect(() => {
     async function fetchData() {
       if (!sessionId) {
         return;
       }
-      setStatus("loading");
       setError("");
-
-      const { data: zoneData, error: zoneError } = await supabaseBrowser
-        .from("face_zones")
-        .select("id, label, description")
-        .order("label", { ascending: true });
-
-      if (zoneError) {
-        setError(zoneError.message);
-      } else {
-        setZones(zoneData ?? []);
-      }
 
       const { data: photoData, error: photoError } = await supabaseBrowser
         .from("photos")
@@ -526,35 +1124,41 @@ export default function AnalysisPage() {
         }
       }
 
-      if (photoData) {
-        const { data: allPhotos } = await supabaseBrowser
-          .from("photos")
-          .select("angle")
-          .eq("session_id", sessionId);
+      const { data: allPhotos, error: allPhotosError } = await supabaseBrowser
+        .from("photos")
+        .select("id, storage_path, created_at, angle")
+        .eq("session_id", sessionId)
+        .order("created_at", { ascending: true });
 
-        if (allPhotos) {
-          const angleSet = new Set(allPhotos.map((row) => row.angle));
-          setIsCaptureComplete(
-            REQUIRED_ANGLES.every((angle) => angleSet.has(angle))
+      if (allPhotosError) {
+        setError(allPhotosError.message);
+        setIsCaptureComplete(false);
+        setSessionPhotos([]);
+      } else if (allPhotos) {
+        const angleSet = new Set(allPhotos.map((row) => row.angle));
+        setIsCaptureComplete(REQUIRED_ANGLES.every((angle) => angleSet.has(angle)));
+        if (storageBucket) {
+          const signedPhotos = await Promise.all(
+            allPhotos.map(async (photo) => {
+              const { data: signedData } = await supabaseBrowser.storage
+                .from(storageBucket)
+                .createSignedUrl(photo.storage_path, 60 * 60);
+              return {
+                ...photo,
+                signedUrl: signedData?.signedUrl ?? "",
+              };
+            })
           );
+          setSessionPhotos(signedPhotos.filter((photo) => photo.signedUrl));
         } else {
-          setIsCaptureComplete(false);
+          setSessionPhotos([]);
         }
+      } else {
+        setIsCaptureComplete(false);
+        setSessionPhotos([]);
+      }
 
-        const { data: analysisData, error: analysisError } =
-          await supabaseBrowser
-            .from("face_zone_analyses")
-            .select("id, zone_id, result, created_at")
-            .eq("session_id", sessionId)
-            .eq("photo_id", photoData.id)
-            .order("created_at", { ascending: false });
-
-        if (analysisError) {
-          setError(analysisError.message);
-        } else {
-          setAnalyses(analysisData ?? []);
-        }
-
+      if (photoData) {
         // Charger l'analyse globale
         const { data: globalData, error: globalError } =
           await supabaseBrowser
@@ -569,51 +1173,11 @@ export default function AnalysisPage() {
         if (!globalError && globalData) {
           setGlobalAnalysis(globalData);
         }
-
-        const { data: overrideData } = await supabaseBrowser
-          .from("face_zone_overrides")
-          .select("zone_id, points")
-          .eq("session_id", sessionId)
-          .eq("photo_id", photoData.id);
-
-        if (overrideData) {
-          const mapped: Record<string, [number, number][]> = {};
-          overrideData.forEach((row) => {
-            mapped[row.zone_id] = (row.points as [number, number][]) ?? [];
-          });
-          setZoneOverrides(mapped);
-        } else {
-          setZoneOverrides({});
-        }
-
-        const { data: fitData } = await supabaseBrowser
-          .from("face_mask_fits")
-          .select("scale, offset_x, offset_y")
-          .eq("session_id", sessionId)
-          .eq("photo_id", photoData.id)
-          .eq("model", model)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (fitData) {
-          setMaskFit({
-            scale: Number(fitData.scale ?? 1),
-            offset_x: Number(fitData.offset_x ?? 0),
-            offset_y: Number(fitData.offset_y ?? 0),
-          });
-          setHasMaskFit(true);
-        } else {
-          setMaskFit({ scale: 1, offset_x: 0, offset_y: 0 });
-          setHasMaskFit(false);
-        }
       }
-
-      setStatus("idle");
     }
 
     fetchData();
-  }, [sessionId, storageBucket, model]);
+  }, [sessionId, storageBucket]);
 
   useEffect(() => {
     const originalError = console.error;
@@ -632,416 +1196,6 @@ export default function AnalysisPage() {
       console.error = originalError;
     };
   }, []);
-
-  useEffect(() => {
-    async function fetchModelFromPatient() {
-      if (!sessionId) {
-        return;
-      }
-      const { data } = await supabaseBrowser
-        .from("sessions")
-        .select("patients(sex)")
-        .eq("id", sessionId)
-        .maybeSingle();
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const patients = (data as any)?.patients;
-      const sexValue = Array.isArray(patients)
-        ? patients[0]?.sex
-        : patients?.sex;
-      setModel(sexValue === "male" ? "XY" : "XX");
-    }
-
-    fetchModelFromPatient();
-  }, [sessionId]);
-
-  useEffect(() => {
-    async function fetchCalibration() {
-      const { data, error: calibrationError } = await supabaseBrowser
-        .from("face_calibrations")
-        .select("zones, zone_exclusions")
-        .eq("model", model)
-        .maybeSingle();
-
-      if (calibrationError) {
-        setCalibration({});
-        setZoneExclusions({});
-        return;
-      }
-
-      const zonesData = (data?.zones as Record<string, [number, number][]>) ?? {};
-      setCalibration(zonesData);
-      const exclusionsData =
-        (data?.zone_exclusions as Record<string, [number, number][]>) ?? {};
-      setZoneExclusions(exclusionsData);
-    }
-
-    fetchCalibration();
-  }, [model]);
-
-  const calibratedGeometry = useMemo(() => {
-    // Préparer les zones de calibration de base
-    let baseZones: ZoneGeometry[] = [];
-
-    if (calibration && Object.keys(calibration).length > 0) {
-      baseZones = Object.entries(calibration)
-        .filter(([, points]) => Array.isArray(points) && points.length > 2)
-        .map(([id, points]) => ({ id, points }));
-    } else {
-      baseZones = DEFAULT_ZONE_GEOMETRY;
-    }
-
-    // Si on a les landmarks MediaPipe, adapter les zones à la morphologie du visage
-    if (faceLandmarks && faceLandmarks.length >= 478) {
-      // D'abord générer le masque du visage
-      const faceMask = generateFaceMask(faceLandmarks);
-
-      // Adapter les zones de calibration au visage détecté
-      const adaptedZones = adaptZonesToFace(baseZones, faceLandmarks);
-
-      // Ajouter le masque du visage si disponible
-      if (faceMask) {
-        return [faceMask, ...adaptedZones];
-      }
-
-      return adaptedZones;
-    }
-
-    // Sans landmarks, utiliser les zones de calibration brutes
-    return baseZones;
-  }, [faceLandmarks, calibration, model]);
-
-  useEffect(() => {
-    async function getLandmarker() {
-      if (landmarkerRef.current) {
-        return landmarkerRef.current;
-      }
-      const vision = await FilesetResolver.forVisionTasks(
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
-      );
-      const landmarker = await FaceLandmarker.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath:
-            "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-        },
-        outputFaceBlendshapes: false,
-        outputFacialTransformationMatrixes: false,
-        numFaces: 1,
-      });
-      landmarkerRef.current = landmarker;
-      return landmarker;
-    }
-
-    async function computeAutoFit() {
-      if (!signedUrl) {
-        return;
-      }
-      try {
-        const landmarker = await getLandmarker();
-        const image = new Image();
-        image.crossOrigin = "anonymous";
-        image.src = signedUrl;
-        await image.decode();
-
-        const results = landmarker.detect(image);
-        const face = results.faceLandmarks?.[0];
-        if (!face || face.length === 0) {
-          return;
-        }
-
-        // Sauvegarder les landmarks pour la génération intelligente des zones
-        setFaceLandmarks(face);
-
-        const pick = (index: number) => face[index] ?? face[0];
-        const leftEyeOuter = pick(33);
-        const rightEyeOuter = pick(263);
-        const noseTip = pick(1);
-        const mouthLeft = pick(61);
-        const mouthRight = pick(291);
-        const chin = pick(152);
-
-        const keyPoints = [
-          leftEyeOuter,
-          rightEyeOuter,
-          noseTip,
-          mouthLeft,
-          mouthRight,
-          chin,
-        ]
-          .filter(Boolean)
-          .map((point) => [point.x * 100, point.y * 100] as [number, number]);
-
-        let faceMinX = Math.min(...keyPoints.map(([x]) => x));
-        let faceMaxX = Math.max(...keyPoints.map(([x]) => x));
-        let faceMinY = Math.min(...keyPoints.map(([, y]) => y));
-        let faceMaxY = Math.max(...keyPoints.map(([, y]) => y));
-
-        const marginX = (faceMaxX - faceMinX) * 0.18;
-        const marginY = (faceMaxY - faceMinY) * 0.35;
-        faceMinX -= marginX;
-        faceMaxX += marginX;
-        faceMinY -= marginY;
-        faceMaxY += marginY;
-
-        const maskXs = calibratedGeometry.flatMap((zone) =>
-          zone.points.map(([x]) => x)
-        );
-        const maskYs = calibratedGeometry.flatMap((zone) =>
-          zone.points.map(([, y]) => y)
-        );
-        if (maskXs.length === 0 || maskYs.length === 0) {
-          return;
-        }
-
-        const maskMinX = Math.min(...maskXs);
-        const maskMaxX = Math.max(...maskXs);
-        const maskMinY = Math.min(...maskYs);
-        const maskMaxY = Math.max(...maskYs);
-        const maskWidth = maskMaxX - maskMinX;
-        const maskHeight = maskMaxY - maskMinY;
-        if (maskWidth <= 0 || maskHeight <= 0) {
-          return;
-        }
-
-        const faceWidth = faceMaxX - faceMinX;
-        const faceHeight = faceMaxY - faceMinY;
-        const nextScale = Math.min(faceWidth / maskWidth, faceHeight / maskHeight);
-        const maskCenterX = (maskMinX + maskMaxX) / 2;
-        const maskCenterY = (maskMinY + maskMaxY) / 2;
-        const faceCenterX = (faceMinX + faceMaxX) / 2;
-        const faceCenterY = (faceMinY + faceMaxY) / 2;
-
-        setAutoFit({
-          scale: Number(nextScale.toFixed(3)),
-          offset_x: faceCenterX - maskCenterX,
-          offset_y: faceCenterY - maskCenterY,
-        });
-      } catch {
-        return;
-      }
-    }
-
-    if (autoFitEnabled) {
-      computeAutoFit();
-    }
-  }, [signedUrl, autoFitEnabled, calibratedGeometry]);
-
-  const transformedGeometry = useMemo(() => {
-    // Calculer le centre de la bbox du masque complet
-    const allMaskPoints = calibratedGeometry.flatMap((zone) => zone.points);
-    if (allMaskPoints.length === 0) {
-      return calibratedGeometry;
-    }
-
-    const maskXs = allMaskPoints.map(([x]) => x);
-    const maskYs = allMaskPoints.map(([, y]) => y);
-    const maskCenterX = (Math.min(...maskXs) + Math.max(...maskXs)) / 2;
-    const maskCenterY = (Math.min(...maskYs) + Math.max(...maskYs)) / 2;
-
-    const appliedFit = autoFitEnabled ? autoFit : maskFit;
-
-    const apply = (points: [number, number][]) =>
-      points.map(([x, y]) => [
-        (x - maskCenterX) * appliedFit.scale + maskCenterX + appliedFit.offset_x,
-        (y - maskCenterY) * appliedFit.scale + maskCenterY + appliedFit.offset_y,
-      ]) as [number, number][];
-
-    return calibratedGeometry.map((zone) => ({
-      ...zone,
-      points: apply(zone.points),
-    }));
-  }, [calibratedGeometry, maskFit, autoFit, autoFitEnabled]);
-
-  const finalGeometry = useMemo(() => {
-    return transformedGeometry.map((zone) => {
-      const override = zoneOverrides[zone.id];
-      const edited =
-        editMode && selectedZoneId === zone.id && editPoints.length > 2
-          ? editPoints
-          : null;
-      return {
-        ...zone,
-        points: edited ?? override ?? zone.points,
-      };
-    });
-  }, [transformedGeometry, zoneOverrides, editMode, editPoints, selectedZoneId]);
-
-  const zoneMeta = useMemo(() => {
-    if (!selectedZoneId) {
-      return null;
-    }
-    return zones.find((zone) => zone.id === selectedZoneId) ?? null;
-  }, [zones, selectedZoneId]);
-
-  const zoneGeometry = useMemo(() => {
-    if (!selectedZoneId) {
-      return null;
-    }
-    return finalGeometry.find((zone) => zone.id === selectedZoneId) ?? null;
-  }, [finalGeometry, selectedZoneId]);
-
-  const zoneAnalysis = useMemo(() => {
-    if (!selectedZoneId) {
-      return null;
-    }
-    return analyses.find((item) => item.zone_id === selectedZoneId) ?? null;
-  }, [analyses, selectedZoneId]);
-
-  async function createZoneDataUrl(
-    imageUrl: string,
-    points: [number, number][],
-    exclusion?: [number, number][]
-  ) {
-    const image = new Image();
-    image.crossOrigin = "anonymous";
-    image.src = imageUrl;
-    await image.decode();
-
-    const width = image.naturalWidth || image.width;
-    const height = image.naturalHeight || image.height;
-
-    const normalized = points.map(([x, y]) => [x / 100, y / 100]);
-    const xs = normalized.map(([x]) => x * width);
-    const ys = normalized.map(([, y]) => y * height);
-    const minX = Math.max(Math.floor(Math.min(...xs)), 0);
-    const maxX = Math.min(Math.ceil(Math.max(...xs)), width);
-    const minY = Math.max(Math.floor(Math.min(...ys)), 0);
-    const maxY = Math.min(Math.ceil(Math.max(...ys)), height);
-    const cropWidth = Math.max(maxX - minX, 1);
-    const cropHeight = Math.max(maxY - minY, 1);
-
-    const baseCanvas = document.createElement("canvas");
-    baseCanvas.width = width;
-    baseCanvas.height = height;
-    const baseCtx = baseCanvas.getContext("2d");
-    if (!baseCtx) {
-      return "";
-    }
-
-    baseCtx.save();
-    baseCtx.beginPath();
-    normalized.forEach(([x, y], index) => {
-      const px = x * width;
-      const py = y * height;
-      if (index === 0) {
-        baseCtx.moveTo(px, py);
-      } else {
-        baseCtx.lineTo(px, py);
-      }
-    });
-    baseCtx.closePath();
-
-    if (exclusion && exclusion.length > 2) {
-      const normalizedExclude = exclusion.map(([x, y]) => [x / 100, y / 100]);
-      normalizedExclude.forEach(([x, y], index) => {
-        if (index === 0) {
-          baseCtx.moveTo(x * width, y * height);
-        } else {
-          baseCtx.lineTo(x * width, y * height);
-        }
-      });
-      baseCtx.closePath();
-      baseCtx.clip("evenodd");
-    } else {
-      baseCtx.clip();
-    }
-
-    baseCtx.drawImage(image, 0, 0, width, height);
-    baseCtx.restore();
-
-    const cropCanvas = document.createElement("canvas");
-    cropCanvas.width = cropWidth;
-    cropCanvas.height = cropHeight;
-    const cropCtx = cropCanvas.getContext("2d");
-    if (!cropCtx) {
-      return "";
-    }
-
-    cropCtx.drawImage(
-      baseCanvas,
-      minX,
-      minY,
-      cropWidth,
-      cropHeight,
-      0,
-      0,
-      cropWidth,
-      cropHeight
-    );
-
-    return cropCanvas.toDataURL("image/jpeg", 0.9);
-  }
-
-  async function handleAnalyzeZone() {
-    if (!sessionId || !facePhoto || !selectedZoneId || !signedUrl) {
-      return;
-    }
-    const geometry = finalGeometry.find(
-      (zone) => zone.id === selectedZoneId
-    );
-    if (!geometry) {
-      return;
-    }
-
-    setStatus("analyzing");
-    setError("");
-
-    let imageDataUrl = "";
-    try {
-      // Calculer le centre du masque complet pour la transformation
-      const allMaskPoints = calibratedGeometry.flatMap((zone) => zone.points);
-      const maskXs = allMaskPoints.map(([x]) => x);
-      const maskYs = allMaskPoints.map(([, y]) => y);
-      const maskCenterX = (Math.min(...maskXs) + Math.max(...maskXs)) / 2;
-      const maskCenterY = (Math.min(...maskYs) + Math.max(...maskYs)) / 2;
-
-      const appliedFit = autoFitEnabled ? autoFit : maskFit;
-      const exclusion = zoneExclusions[selectedZoneId]
-        ? (zoneExclusions[selectedZoneId].map(([x, y]) => [
-            (x - maskCenterX) * appliedFit.scale + maskCenterX + appliedFit.offset_x,
-            (y - maskCenterY) * appliedFit.scale + maskCenterY + appliedFit.offset_y,
-          ]) as [number, number][])
-        : undefined;
-      imageDataUrl = await createZoneDataUrl(
-        signedUrl,
-        geometry.points,
-        exclusion
-      );
-    } catch (error) {
-      imageDataUrl = "";
-    }
-
-    if (!imageDataUrl) {
-      setError("Impossible de preparer la zone. Verifie le CORS storage.");
-      setStatus("idle");
-      return;
-    }
-
-    const response = await fetch("/api/analysis/face-zone", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId,
-        photoId: facePhoto.id,
-        zoneId: selectedZoneId,
-        imageDataUrl,
-      }),
-    });
-
-    if (!response.ok) {
-      const payload = await response.json().catch(() => null);
-      setError(payload?.error ?? "Erreur analyse.");
-      setStatus("idle");
-      return;
-    }
-
-    const payload = await response.json();
-    setAnalyses((prev) => [
-      payload.data,
-      ...prev.filter((item) => item.zone_id !== selectedZoneId),
-    ]);
-    setStatus("idle");
-  }
 
   async function handleGlobalAnalysis() {
     if (!sessionId || !facePhoto || !signedUrl) {
@@ -1131,10 +1285,20 @@ export default function AnalysisPage() {
     }
 
     const payload = await response.json();
-    const reply =
+    let reply =
       payload?.data?.reply ??
       payload?.data?.summary ??
       "Reponse indisponible.";
+
+    // Sécurité : si reply contient du JSON brut, l'extraire
+    if (typeof reply === "string" && reply.trim().startsWith("{")) {
+      try {
+        const parsed = JSON.parse(reply);
+        reply = parsed.reply ?? parsed.summary ?? reply;
+      } catch {
+        // Si le parsing échoue, garder la réponse telle quelle
+      }
+    }
 
     setChatMessages((prev) => [...prev, { role: "assistant", content: reply }]);
     if (payload?.data?.treatmentText) {
@@ -1154,8 +1318,11 @@ export default function AnalysisPage() {
     if (!facePhoto || !signedUrl || globalAnalysis) {
       return;
     }
-    setAutoGlobalTriggered(true);
-    handleGlobalAnalysis();
+    // Use setTimeout to avoid setState during render
+    setTimeout(() => {
+      setAutoGlobalTriggered(true);
+      handleGlobalAnalysis();
+    }, 0);
   }, [
     searchParams,
     autoGlobalTriggered,
@@ -1165,8 +1332,266 @@ export default function AnalysisPage() {
     globalAnalysis,
   ]);
 
+  useEffect(() => {
+    if (!showZones || !activePhoto) {
+      return;
+    }
+    if (zonesByPhoto[activePhoto.id]) {
+      setZonesStatus("ready");
+      return;
+    }
+    let mounted = true;
+    async function fetchZones() {
+      setZonesStatus("loading");
+      setZonesError("");
+      const { data, error: zonesLoadError } = await supabaseBrowser
+        .from("face_landmarks")
+        .select("landmarks")
+        .eq("photo_id", activePhoto.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!mounted) {
+        return;
+      }
+      if (zonesLoadError) {
+        setZonesStatus("error");
+        setZonesError(zonesLoadError.message);
+        return;
+      }
+      if (!data?.landmarks) {
+        if (!activePhoto.signedUrl || !sessionId) {
+          setZonesStatus("error");
+          setZonesError("Landmarks indisponibles pour cette photo.");
+          return;
+        }
+        try {
+          const landmarker = await getLandmarker();
+          const image = new Image();
+          image.crossOrigin = "anonymous";
+          image.src = activePhoto.signedUrl;
+          await image.decode();
+
+          const results = landmarker.detect(image);
+          const face = results.faceLandmarks?.[0];
+          if (!face || face.length === 0) {
+            setZonesStatus("error");
+            setZonesError("Aucun visage detecte pour cette photo.");
+            return;
+          }
+
+          const insertPayload = buildLandmarkInsert(
+            face as FaceLandmark[],
+            activePhoto.id,
+            sessionId
+          );
+          const { error: insertError } = await supabaseBrowser
+            .from("face_landmarks")
+            .insert(insertPayload);
+
+          if (insertError) {
+            setZonesStatus("error");
+            setZonesError(insertError.message);
+            return;
+          }
+
+          const zones = filterZonesByAngle(
+            buildFaceZones(face as FaceLandmark[]),
+            activePhoto.angle
+          );
+          if (zones.length === 0) {
+            setZonesStatus("error");
+            setZonesError("Zones non disponibles pour cet angle.");
+            return;
+          }
+          setZonesByPhoto((prev) => ({ ...prev, [activePhoto.id]: zones }));
+          setZonesStatus("ready");
+          return;
+        } catch (error) {
+          setZonesStatus("error");
+          setZonesError("Echec de la detection des landmarks.");
+          return;
+        }
+      }
+
+      const zones = filterZonesByAngle(
+        buildFaceZones(data.landmarks as FaceLandmark[]),
+        activePhoto.angle
+      );
+      if (zones.length === 0) {
+        setZonesStatus("error");
+        setZonesError("Zones non disponibles pour cet angle.");
+        return;
+      }
+      setZonesByPhoto((prev) => ({ ...prev, [activePhoto.id]: zones }));
+      setZonesStatus("ready");
+    }
+
+    fetchZones();
+    return () => {
+      mounted = false;
+    };
+  }, [showZones, activePhoto, zonesByPhoto]);
+
+  useEffect(() => {
+    if (!activePhoto?.signedUrl && !signedUrl) {
+      return;
+    }
+    const raf = requestAnimationFrame(() => syncCanvasSize());
+    return () => cancelAnimationFrame(raf);
+  }, [activePhoto?.signedUrl, signedUrl]);
+
   if (!sessionId) {
     return <div className="text-sm text-zinc-500">Session invalide.</div>;
+  }
+
+  async function getLandmarker() {
+    if (landmarkerRef.current) {
+      return landmarkerRef.current;
+    }
+    const vision = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+    );
+    const landmarker = await FaceLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath:
+          "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+      },
+      outputFaceBlendshapes: false,
+      outputFacialTransformationMatrixes: false,
+      numFaces: 1,
+      runningMode: "IMAGE",
+    });
+    landmarkerRef.current = landmarker;
+    return landmarker;
+  }
+
+  function syncCanvasSize() {
+    const img = mainImageRef.current;
+    const canvas = canvasRef.current;
+    if (!img || !canvas) {
+      return;
+    }
+    const rect = img.getBoundingClientRect();
+    if (!rect.width || !rect.height) {
+      return;
+    }
+    const scale = window.devicePixelRatio || 1;
+    canvas.width = Math.round(rect.width * scale);
+    canvas.height = Math.round(rect.height * scale);
+    canvas.style.width = `${rect.width}px`;
+    canvas.style.height = `${rect.height}px`;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      return;
+    }
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  }
+
+  function clearCanvas() {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) {
+      return;
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const scale = window.devicePixelRatio || 1;
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  }
+
+  function getCanvasPoint(event: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return { x: 0, y: 0 };
+    }
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    };
+  }
+
+  function handleCanvasPointerDown(event: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) {
+      return;
+    }
+    canvas.setPointerCapture(event.pointerId);
+    const point = getCanvasPoint(event);
+    drawingRef.current.isDrawing = true;
+    drawingRef.current.lastPoint = point;
+    if (drawTool === "pen") {
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = strokeWidth;
+      ctx.beginPath();
+      ctx.moveTo(point.x, point.y);
+    } else {
+      drawingRef.current.rectStart = point;
+      drawingRef.current.snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    }
+  }
+
+  function handleCanvasPointerMove(event: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx || !drawingRef.current.isDrawing) {
+      return;
+    }
+    const point = getCanvasPoint(event);
+    if (drawTool === "pen") {
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = strokeWidth;
+      ctx.lineTo(point.x, point.y);
+      ctx.stroke();
+      drawingRef.current.lastPoint = point;
+    } else if (drawingRef.current.rectStart && drawingRef.current.snapshot) {
+      const { rectStart, snapshot } = drawingRef.current;
+      ctx.putImageData(snapshot, 0, 0);
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = strokeWidth;
+      ctx.strokeRect(
+        rectStart.x,
+        rectStart.y,
+        point.x - rectStart.x,
+        point.y - rectStart.y
+      );
+    }
+  }
+
+  function handleCanvasPointerUp(event: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) {
+      return;
+    }
+    canvas.releasePointerCapture(event.pointerId);
+    if (drawTool === "rect" && drawingRef.current.snapshot) {
+      drawingRef.current.snapshot = null;
+      drawingRef.current.rectStart = null;
+    }
+    drawingRef.current.isDrawing = false;
+  }
+
+  function handleCanvasPointerLeave() {
+    drawingRef.current.isDrawing = false;
+    drawingRef.current.snapshot = null;
+    drawingRef.current.rectStart = null;
+  }
+
+  function scrollGallery(direction: "left" | "right") {
+    if (!galleryRef.current) {
+      return;
+    }
+    const delta = direction === "left" ? -320 : 320;
+    galleryRef.current.scrollBy({ left: delta, behavior: "smooth" });
   }
 
   return (
@@ -1178,21 +1603,56 @@ export default function AnalysisPage() {
               Analyse visage
             </h1>
             <p className="mt-1 text-sm text-zinc-600">
-              Clique sur une zone pour une analyse ciblée, ou lance une analyse globale du visage.
+              Lance une analyse globale du visage pour obtenir une évaluation complète.
             </p>
           </div>
-          <button
-            className="rounded-full bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-gray-400"
-            disabled={!facePhoto || globalStatus === "analyzing"}
-            onClick={handleGlobalAnalysis}
-            type="button"
-          >
-            {globalStatus === "analyzing"
-              ? "Analyse globale en cours..."
-              : "🌐 Analyse globale"}
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              className="rounded-full border border-zinc-200 bg-white px-5 py-2 text-sm font-semibold text-zinc-700 transition hover:border-indigo-300 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={!activePhoto}
+              onClick={() => setShowZones((prev) => !prev)}
+              type="button"
+            >
+              {showZones ? "Masquer les zones" : "Afficher les zones"}
+            </button>
+            <button
+              className="rounded-full bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+              disabled={!facePhoto || globalStatus === "analyzing"}
+              onClick={handleGlobalAnalysis}
+              type="button"
+            >
+              {globalStatus === "analyzing"
+                ? "Analyse globale en cours..."
+                : "🌐 Analyse globale"}
+            </button>
+          </div>
         </div>
       </header>
+
+      {/* Animation pendant l'analyse globale uniquement */}
+      {globalStatus === "analyzing" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="relative w-full max-w-4xl mx-4">
+            <video
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="w-full h-auto rounded-2xl shadow-2xl"
+              src="https://ongcadzzheyyigickvfu.supabase.co/storage/v1/object/public/images%20site%20web/new.mp4"
+            />
+            <div className="absolute bottom-8 left-0 right-0 text-center">
+              <p className="text-2xl font-bold text-white drop-shadow-lg">
+                Analyse en cours
+                <span className="inline-block animate-pulse">...</span>
+              </p>
+              <p className="mt-2 text-sm text-gray-300">
+                Veuillez patienter pendant que l&apos;IA analyse les données
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -1205,314 +1665,227 @@ export default function AnalysisPage() {
           Aucune photo face disponible. Capture une photo face d&apos;abord.
         </div>
       ) : (
-        <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+        <section className="grid gap-6 lg:grid-cols-[1.6fr_0.9fr]">
           <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-            <div className="relative overflow-hidden rounded-2xl bg-zinc-100">
+            <div className="relative overflow-hidden rounded-2xl bg-zinc-100" style={{ touchAction: "none" }}>
               <img
-                alt="Photo face"
-                className="w-full object-cover"
-                src={signedUrl}
+                ref={mainImageRef}
+                alt={`Photo ${ANGLE_LABELS[activePhoto?.angle ?? "face"] ?? "face"}`}
+                className="w-full select-none object-cover"
+                src={activePhoto?.signedUrl ?? signedUrl}
+                onLoad={syncCanvasSize}
               />
-              <svg
-                className="absolute inset-0 h-full w-full"
-                viewBox="0 0 100 100"
-                onPointerMove={(event) => {
-                  if (dragPointIndex === null) {
-                    return;
-                  }
-                  const rect = (
-                    event.currentTarget as SVGSVGElement
-                  ).getBoundingClientRect();
-                  const x = ((event.clientX - rect.left) / rect.width) * 100;
-                  const y = ((event.clientY - rect.top) / rect.height) * 100;
-                  setEditPoints((prev) =>
-                    prev.map((point, index) =>
-                      index === dragPointIndex
-                        ? [Math.min(Math.max(x, 0), 100), Math.min(Math.max(y, 0), 100)]
-                        : point
-                    )
-                  );
-                }}
-                onPointerUp={() => setDragPointIndex(null)}
-                onPointerLeave={() => setDragPointIndex(null)}
-              >
-                {finalGeometry.map((zone) => (
-                  <polygon
-                    key={zone.id}
-                    points={zone.points.map(([x, y]) => `${x},${y}`).join(" ")}
-                    fill={
-                      selectedZoneId === zone.id
-                        ? "rgba(45, 212, 191, 0.4)"
-                        : "rgba(59, 130, 246, 0.18)"
-                    }
-                    stroke={
-                      selectedZoneId === zone.id
-                        ? "rgba(13, 148, 136, 0.9)"
-                        : "rgba(59, 130, 246, 0.5)"
-                    }
-                    strokeWidth="0.5"
-                    onClick={() => setSelectedZoneId(zone.id)}
-                    style={{ cursor: "pointer" }}
-                  >
-                    <title>
-                      {zones.find((meta) => meta.id === zone.id)?.label ?? zone.id}
-                    </title>
-                  </polygon>
-                ))}
-                {editMode && editPoints.length > 0
-                  ? editPoints.map(([x, y], index) => (
-                      <circle
-                        key={`edit-${x}-${y}-${index}`}
-                        cx={x}
-                        cy={y}
-                        r="0.9"
-                        fill="white"
-                        stroke="black"
-                        strokeWidth="0.3"
-                        onPointerDown={(event) => {
-                          event.stopPropagation();
-                          event.currentTarget.setPointerCapture(event.pointerId);
-                          setDragPointIndex(index);
-                        }}
-                        style={{ cursor: "grab" }}
+              {showZones && activeZones ? (
+                <svg
+                  className="absolute inset-0 h-full w-full pointer-events-none"
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                >
+                  {activeZones.map((zone) => (
+                    <g key={zone.id}>
+                      <polygon
+                        points={zone.points.map((point) => `${point.x},${point.y}`).join(" ")}
+                        fill={`${zone.color}33`}
+                        stroke={`${zone.color}cc`}
+                        strokeWidth="0.8"
                       />
-                    ))
-                  : null}
-              </svg>
+                      <text
+                        x={zone.labelX}
+                        y={zone.labelY}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fontSize="2.6"
+                        fill="#0f172a"
+                        opacity="0.85"
+                      >
+                        {zone.label}
+                      </text>
+                    </g>
+                  ))}
+                </svg>
+              ) : null}
+              <canvas
+                ref={canvasRef}
+                className={`absolute inset-0 h-full w-full ${
+                  drawTool === "pen" ? "cursor-crosshair" : "cursor-cell"
+                }`}
+                onPointerDown={handleCanvasPointerDown}
+                onPointerMove={handleCanvasPointerMove}
+                onPointerUp={handleCanvasPointerUp}
+                onPointerLeave={handleCanvasPointerLeave}
+              />
             </div>
-          </div>
-
-          <div className="flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
-                Zone selectionnee
-              </p>
-              <h2 className="mt-2 text-xl font-semibold text-zinc-900">
-                {zoneMeta?.label ?? "Choisir une zone"}
-              </h2>
-              <p className="mt-2 text-sm text-zinc-600">
-                {zoneMeta?.description ?? "Clique sur une zone bleue."}
-              </p>
-            </div>
-            <div className="grid gap-2">
-              <label className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                Modele
-              </label>
-              <select
-                className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-700"
-                value={model}
-                onChange={(event) => setModel(event.target.value)}
-              >
-                <option value="XX">XX (femme)</option>
-                <option value="XY">XY (homme)</option>
-              </select>
-              <a
-                className="text-xs font-medium text-zinc-600 hover:text-zinc-900"
-                href="/calibration"
-              >
-                Calibrer les modeles
-              </a>
-            </div>
-            {editMode ? (
-              <div className="flex flex-wrap gap-2">
-                <>
-                  <button
-                    className="rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-teal-500/30 transition-all hover:shadow-xl hover:shadow-teal-500/40 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
-                    onClick={async () => {
-                      if (!selectedZoneId || !facePhoto) {
-                        setError("Impossible de sauvegarder : zone ou photo manquante");
-                        return;
-                      }
-                      const normalizedZoneId = selectedZoneId.trim();
-                      if (!zones.some((zone) => zone.id === normalizedZoneId)) {
-                        const { error: zoneInsertError } = await supabaseBrowser
-                          .from("face_zones")
-                          .insert({
-                            id: normalizedZoneId,
-                            label: normalizedZoneId,
-                            description: "",
-                          });
-                        if (zoneInsertError) {
-                          setError("Erreur lors de la creation de la zone : " + zoneInsertError.message);
-                          return;
-                        }
-                        setZones((prev) => [
-                          ...prev,
-                          { id: normalizedZoneId, label: normalizedZoneId, description: "" },
-                        ]);
-                        setSelectedZoneId(normalizedZoneId);
-                      }
-                      setStatus("loading");
-                      const { error: saveError } = await supabaseBrowser
-                        .from("face_zone_overrides")
-                        .upsert(
-                          {
-                            session_id: sessionId,
-                            photo_id: facePhoto.id,
-                            zone_id: normalizedZoneId,
-                            points: editPoints,
-                          },
-                          {
-                            onConflict: "session_id,photo_id,zone_id",
-                          }
-                        );
-                      if (!saveError) {
-                        setZoneOverrides((prev) => ({
-                          ...prev,
-                          [normalizedZoneId]: editPoints,
-                        }));
-                        setEditMode(false);
-                        setError("");
-                      } else {
-                        setError("Erreur lors de la sauvegarde : " + saveError.message);
-                      }
-                      setStatus("idle");
-                    }}
-                    disabled={status === "loading" || !selectedZoneId || !facePhoto || editPoints.length < 3}
-                    type="button"
-                  >
-                    {status === "loading" ? "Sauvegarde..." : "✓ Sauvegarder"}
-                  </button>
-                  <button
-                    className="rounded-xl border-2 border-red-200 bg-white px-6 py-3 text-sm font-semibold text-red-600 transition-all hover:bg-red-50 hover:border-red-300"
-                    onClick={async () => {
-                      if (!selectedZoneId || !facePhoto) {
-                        return;
-                      }
-                      await supabaseBrowser
-                        .from("face_zone_overrides")
-                        .delete()
-                        .eq("session_id", sessionId)
-                        .eq("photo_id", facePhoto.id)
-                        .eq("zone_id", selectedZoneId);
-                      setZoneOverrides((prev) => {
-                        const next = { ...prev };
-                        delete next[selectedZoneId];
-                        return next;
-                      });
-                      setEditMode(false);
-                      setEditPoints([]);
-                    }}
-                    type="button"
-                  >
-                    ✕ Annuler
-                  </button>
-                </>
+            {showZones ? (
+              <div className="mt-3 text-xs text-zinc-500">
+                {zonesStatus === "loading" ? "Chargement des zones..." : null}
+                {zonesStatus === "error" ? zonesError : null}
+                {zonesStatus === "ready" ? "Zones affichees sur la photo active." : null}
               </div>
             ) : null}
-            <button
-              className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400"
-              disabled={!selectedZoneId || status === "analyzing"}
-              onClick={handleAnalyzeZone}
-              type="button"
-            >
-              {status === "analyzing"
-                ? "Analyse en cours..."
-                : "Analyser la zone"}
-            </button>
+          </div>
 
-            {zoneAnalysis ? (
-              <div className="space-y-4">
-                {/* Résumé principal */}
-                <div className="rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 p-6 shadow-sm">
-                  <div className="mb-3 flex items-center gap-2">
-                    <div className="h-1.5 w-1.5 rounded-full bg-blue-500"></div>
-                    <h3 className="text-sm font-semibold uppercase tracking-wide text-blue-900">
-                      Analyse
-                    </h3>
-                  </div>
-                  <p className="text-base leading-relaxed text-gray-800">
-                    {highlightKeywords(zoneAnalysis.result.summary ?? zoneAnalysis.result.raw ?? "")}
-                  </p>
-                </div>
+          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
+              Outils d&apos;annotation
+            </p>
+            <h3 className="mt-2 text-lg font-semibold text-zinc-900">
+              Tracer sur la photo
+            </h3>
+            <p className="mt-2 text-sm text-zinc-600">
+              Dessinez des traits ou encadrez des zones importantes.
+            </p>
 
-                {/* Observations */}
-                {zoneAnalysis.result.observations?.length ? (
-                  <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 p-6 shadow-sm">
-                    <div className="mb-4 flex items-center gap-2">
-                      <div className="h-1.5 w-1.5 rounded-full bg-emerald-500"></div>
-                      <h3 className="text-sm font-semibold uppercase tracking-wide text-emerald-900">
-                        Observations
-                      </h3>
-                    </div>
-                    <ul className="space-y-3">
-                      {zoneAnalysis.result.observations.map((item, idx) => (
-                        <li
-                          key={idx}
-                          className="flex items-start gap-3 text-sm text-gray-700"
-                        >
-                          <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-emerald-400"></span>
-                          <span className="leading-relaxed">{highlightKeywords(item)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
+            <div className="mt-4 flex flex-wrap gap-2">
+              {[
+                { id: "pen" as const, label: "Trait" },
+                { id: "rect" as const, label: "Zone" },
+              ].map((tool) => (
+                <button
+                  key={tool.id}
+                  type="button"
+                  onClick={() => setDrawTool(tool.id)}
+                  className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                    drawTool === tool.id
+                      ? "border-indigo-400 bg-indigo-50 text-indigo-700"
+                      : "border-zinc-200 bg-white text-zinc-600 hover:border-indigo-300 hover:text-indigo-700"
+                  }`}
+                  aria-pressed={drawTool === tool.id}
+                >
+                  {tool.label}
+                </button>
+              ))}
+            </div>
 
-                {/* Préoccupations potentielles */}
-                {zoneAnalysis.result.possibleConcerns?.length ? (
-                  <div className="rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 p-6 shadow-sm">
-                    <div className="mb-4 flex items-center gap-2">
-                      <div className="h-1.5 w-1.5 rounded-full bg-amber-500"></div>
-                      <h3 className="text-sm font-semibold uppercase tracking-wide text-amber-900">
-                        Points d&apos;attention
-                      </h3>
-                    </div>
-                    <ul className="space-y-3">
-                      {zoneAnalysis.result.possibleConcerns.map((item, idx) => (
-                        <li
-                          key={idx}
-                          className="flex items-start gap-3 text-sm text-gray-700"
-                        >
-                          <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-amber-400"></span>
-                          <span className="leading-relaxed">{highlightKeywords(item)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-
-                {/* Recommandations */}
-                {zoneAnalysis.result.suggestedFocus?.length ? (
-                  <div className="rounded-2xl bg-gradient-to-br from-violet-50 to-purple-50 p-6 shadow-sm">
-                    <div className="mb-4 flex items-center gap-2">
-                      <div className="h-1.5 w-1.5 rounded-full bg-violet-500"></div>
-                      <h3 className="text-sm font-semibold uppercase tracking-wide text-violet-900">
-                        Recommandations
-                      </h3>
-                    </div>
-                    <ul className="space-y-3">
-                      {zoneAnalysis.result.suggestedFocus.map((item, idx) => (
-                        <li
-                          key={idx}
-                          className="flex items-start gap-3 text-sm text-gray-700"
-                        >
-                          <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-violet-400"></span>
-                          <span className="leading-relaxed font-medium">{highlightKeywords(item)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-
-                {/* Disclaimer discret */}
-                <p className="rounded-lg bg-gray-50 px-4 py-3 text-xs leading-relaxed text-gray-500">
-                  {zoneAnalysis.result.disclaimer ??
-                    "Ces observations sont à visée esthétique uniquement et ne constituent pas un diagnostic médical."}
-                </p>
+            <div className="mt-4">
+              <p className="text-xs font-semibold text-zinc-600">Couleur</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {["#ef4444", "#f97316", "#22c55e", "#3b82f6", "#111827"].map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => setStrokeColor(color)}
+                    className={`h-7 w-7 rounded-full border transition ${
+                      strokeColor === color ? "border-indigo-400 ring-2 ring-indigo-200" : "border-zinc-200"
+                    }`}
+                    style={{ backgroundColor: color }}
+                    aria-label={`Couleur ${color}`}
+                  />
+                ))}
               </div>
-            ) : (
-              <div className="rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 p-8 text-center">
-                <p className="text-sm text-gray-500">
-                  Sélectionnez une zone et cliquez sur &quot;Analyser la zone&quot; pour obtenir une analyse détaillée
-                </p>
+            </div>
+
+            <div className="mt-4">
+              <label className="text-xs font-semibold text-zinc-600">
+                Epaisseur
+              </label>
+              <div className="mt-2 flex items-center gap-3">
+                <input
+                  type="range"
+                  min="1"
+                  max="10"
+                  step="1"
+                  value={strokeWidth}
+                  onChange={(event) => setStrokeWidth(Number(event.target.value))}
+                  className="w-full"
+                />
+                <span className="min-w-[32px] text-right text-xs font-semibold text-zinc-700">
+                  {strokeWidth}px
+                </span>
               </div>
-            )}
+            </div>
+
+            <div className="mt-6">
+              <button
+                type="button"
+                className="w-full rounded-full border border-zinc-200 bg-white px-4 py-2 text-xs font-semibold text-zinc-600 transition hover:border-red-300 hover:text-red-600"
+                onClick={clearCanvas}
+              >
+                Effacer les tracés
+              </button>
+            </div>
           </div>
         </section>
       )}
 
-      {isCaptureComplete && hasMaskFit ? (
+      <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
+              Galerie session
+            </p>
+            <h2 className="mt-2 text-xl font-semibold text-zinc-900">
+              Toutes les photos du patient
+            </h2>
+            <p className="mt-2 text-sm text-zinc-600">
+              Les prises face, profils et 3/4 sont toutes visibles ici.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="rounded-full border border-zinc-200 bg-white p-2 text-zinc-600 transition hover:border-indigo-300 hover:text-indigo-700"
+              onClick={() => scrollGallery("left")}
+              aria-label="Defiler vers la gauche"
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              className="rounded-full border border-zinc-200 bg-white p-2 text-zinc-600 transition hover:border-indigo-300 hover:text-indigo-700"
+              onClick={() => scrollGallery("right")}
+              aria-label="Defiler vers la droite"
+            >
+              →
+            </button>
+          </div>
+        </div>
+
+        {sessionPhotos.length === 0 ? (
+          <div className="mt-4 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-6 text-sm text-zinc-500">
+            Aucune photo disponible pour cette session.
+          </div>
+        ) : (
+          <div
+            ref={galleryRef}
+            className="mt-6 flex gap-4 overflow-x-auto pb-2 scroll-smooth snap-x snap-mandatory"
+          >
+            {sessionPhotos.map((photo) => (
+              <div
+                key={photo.id}
+                className={`min-w-[240px] max-w-[240px] snap-start overflow-hidden rounded-2xl border ${
+                  photo.id === activePhotoId
+                    ? "border-indigo-400 ring-2 ring-indigo-200"
+                    : "border-zinc-200"
+                } bg-zinc-50`}
+              >
+                <button
+                  type="button"
+                  onClick={() => setActivePhotoId(photo.id)}
+                  className="block w-full text-left"
+                >
+                  <div className="relative aspect-[4/3] bg-zinc-100">
+                  <img
+                    alt={`Photo ${ANGLE_LABELS[photo.angle] ?? photo.angle}`}
+                    className="h-full w-full object-cover"
+                    src={photo.signedUrl}
+                  />
+                  </div>
+                  <div className="flex items-center justify-between px-3 py-2 text-xs text-zinc-600">
+                    <span className="font-semibold text-zinc-800">
+                      {ANGLE_LABELS[photo.angle] ?? photo.angle}
+                    </span>
+                    <span className="uppercase tracking-[0.2em]">
+                      {photo.angle.replaceAll("_", " ")}
+                    </span>
+                  </div>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {isCaptureComplete ? (
         <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -1528,7 +1901,7 @@ export default function AnalysisPage() {
           </div>
         </div>
 
-        <div className="mt-6 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="mt-6 grid gap-4 lg:grid-cols-[1.6fr_1fr]">
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
             <div className="flex flex-wrap gap-2">
               {[
@@ -1558,7 +1931,7 @@ export default function AnalysisPage() {
               ))}
             </div>
 
-            <div className="mt-4 max-h-[320px] space-y-3 overflow-y-auto rounded-xl bg-white p-4 text-sm text-zinc-700 shadow-inner">
+            <div className="mt-4 max-h-[500px] space-y-3 overflow-y-auto rounded-xl bg-white p-4 text-sm text-zinc-700 shadow-inner">
               {chatMessages.length === 0 ? (
                 <p className="text-zinc-400">
                   Aucun message pour le moment. Utilisez les raccourcis ou posez une question.
@@ -1576,7 +1949,9 @@ export default function AnalysisPage() {
                     <p className="text-xs font-semibold uppercase tracking-wide">
                       {msg.role === "user" ? "Vous" : "IA"}
                     </p>
-                    <p className="mt-1 whitespace-pre-wrap">{msg.content}</p>
+                    <div className="mt-1 text-sm leading-relaxed">
+                      {msg.role === "assistant" ? formatChatMessage(msg.content) : msg.content}
+                    </div>
                   </div>
                 ))
               )}
@@ -1622,21 +1997,73 @@ export default function AnalysisPage() {
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-4">
             <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
-              Generation IA
+              Prévisualisation IA
             </p>
             <h3 className="mt-2 text-lg font-semibold text-zinc-900">
-              Texte de traitement
+              Simulation de traitement
             </h3>
-            <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-700">
-              {treatmentText || "Selectionnez un raccourci pour generer un traitement."}
+            <p className="mt-2 text-sm text-zinc-600">
+              Générez une image de prévisualisation du résultat du traitement proposé sur le patient.
             </p>
-            {visualPrompt ? (
-              <div className="mt-4 rounded-xl border border-dashed border-indigo-200 bg-indigo-50 px-4 py-3 text-xs text-indigo-700">
-                Prompt image pret : {visualPrompt}
+
+            <div className="mt-4 space-y-3">
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+                <p className="text-xs font-semibold text-zinc-700 mb-2">Type de traitement</p>
+                <select
+                  value={selectedTreatment}
+                  onChange={(e) => setSelectedTreatment(e.target.value)}
+                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  disabled
+                >
+                  {AESTHETIC_TREATMENTS.map((treatment) => (
+                    <option key={treatment.id} value={treatment.id}>
+                      {treatment.label}
+                    </option>
+                  ))}
+                </select>
+                {currentTreatment && (
+                  <p className="mt-2 text-xs text-zinc-500">
+                    Catégorie : {currentTreatment.category}
+                  </p>
+                )}
               </div>
-            ) : null}
-            <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs text-zinc-600">
-              Generation d'image: en attente de configuration du modele d'image.
+
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+                <p className="text-xs font-semibold text-zinc-700 mb-2">Intensité du traitement</p>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min="1"
+                    max="3"
+                    step="1"
+                    value={treatmentIntensity}
+                    onChange={(e) => setTreatmentIntensity(Number(e.target.value))}
+                    className="w-full"
+                    disabled
+                  />
+                  <span className="text-xs text-zinc-600 min-w-[70px] font-semibold">
+                    {getIntensityLabel(treatmentIntensity)}
+                  </span>
+                </div>
+                <div className="mt-1 flex justify-between text-xs text-zinc-500">
+                  <span>Subtil</span>
+                  <span>Modéré</span>
+                  <span>Prononcé</span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="w-full rounded-full bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled
+              >
+                Générer la prévisualisation
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+              <p className="font-semibold mb-1">⚠️ En développement</p>
+              <p>La génération d&apos;images via Replicate est en cours de configuration. L&apos;IA ajustera automatiquement les volumes selon le traitement et l&apos;intensité sélectionnés.</p>
             </div>
           </div>
         </div>

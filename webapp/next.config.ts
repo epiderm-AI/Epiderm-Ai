@@ -3,7 +3,12 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Image optimization pour Netlify
   images: {
-    domains: ['ongcadzzheyyigickvfu.supabase.co'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'ongcadzzheyyigickvfu.supabase.co',
+      },
+    ],
     unoptimized: false,
   },
 

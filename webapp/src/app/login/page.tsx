@@ -18,7 +18,7 @@ export default function LoginPage() {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    supabaseBrowser.auth.getSession().then(({ data }) => {
+    supabaseBrowser.auth.getSession().then(({ data }: { data: any }) => {
       if (data.session) {
         router.replace("/patients");
       }

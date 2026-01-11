@@ -24,7 +24,5 @@ export const config = {
     "/sessions/:path*",
     "/capture/:path*",
     "/analysis/:path*",
-    "/calibration/:path*",
-    "/mask-fit/:path*",
   ],
 };

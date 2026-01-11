@@ -192,7 +192,7 @@ export default function PatientDetailPage() {
         setPhotoError(photoFetchError.message);
       } else {
         const normalizedPhotos: PhotoRow[] =
-          photoData?.map((photo) => {
+          photoData?.map((photo: any) => {
             const session = Array.isArray(photo.sessions)
               ? photo.sessions[0]
               : photo.sessions;

@@ -23,7 +23,7 @@ export default function AuthStatus() {
       };
     }
 
-    supabaseBrowser.auth.getSession().then(({ data }) => {
+    supabaseBrowser.auth.getSession().then(({ data }: { data: any }) => {
       if (isMounted) {
         setSession(data.session ?? null);
         setLoading(false);
@@ -31,7 +31,7 @@ export default function AuthStatus() {
     });
 
     const { data: subscription } = supabaseBrowser.auth.onAuthStateChange(
-      (_event, nextSession) => {
+      (_event: any, nextSession: any) => {
         if (isMounted) {
           setSession(nextSession);
         }

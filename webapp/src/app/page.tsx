@@ -20,7 +20,7 @@ export default function Home() {
                 className="rounded-full bg-blue-600 px-5 py-2 text-xs font-semibold text-white transition hover:bg-blue-700"
                 href="/login"
               >
-                Demarrer
+                Démarrer
               </Link>
             </div>
           </div>
@@ -28,16 +28,16 @@ export default function Home() {
           <div className="grid items-center gap-8 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="max-w-3xl space-y-4">
               <h1 className="text-3xl font-semibold sm:text-5xl">
-                Epiderm‑AI, la plateforme clinique pour l’esthétique du visage.
+                Epiderm-AI, la plateforme clinique pour l'esthétique du visage.
               </h1>
               <p className="text-base text-slate-600 sm:text-lg">
                 Photographier, analyser, puis projeter. Un parcours clair pour capturer les
                 photos du patient, obtenir une analyse intelligente des zones faciales et
-                dialoguer avec l’IA sur les traitements esthétiques.
+                dialoguer avec l'IA sur les traitements esthétiques.
               </p>
               <p className="text-sm text-slate-500">
-                De la capture standardisee a la proposition de traitements, tout est structure
-                pour accelerer la consultation et valoriser l’experience patient.
+                De la capture standardisée à la proposition de traitements, tout est structuré
+                pour accélérer la consultation et valoriser l'expérience patient.
               </p>
             </div>
             <div className="relative">
@@ -57,15 +57,15 @@ export default function Home() {
           {[
             {
               title: "1. Photographier",
-              text: "Capture guidee multi‑angles avec masque et controle qualite.",
+              text: "Capture guidée multi-angles avec masque et contrôle qualité.",
             },
             {
               title: "2. Analyser",
-              text: "Lecture automatique des zones du visage et synthese claire.",
+              text: "Lecture automatique des zones du visage et synthèse claire.",
             },
             {
               title: "3. Se projeter",
-              text: "Dialogue IA + generation de propositions de traitements.",
+              text: "Dialogue IA + génération de propositions de traitements.",
             },
           ].map((item) => (
             <div
@@ -75,7 +75,7 @@ export default function Home() {
               <p className="text-sm font-semibold text-slate-900">{item.title}</p>
               <p className="mt-2 text-sm text-slate-600">{item.text}</p>
               <p className="mt-3 text-xs text-slate-500">
-                Optimise le temps clinique et standardise les resultats.
+                Optimise le temps clinique et standardise les résultats.
               </p>
             </div>
           ))}
@@ -88,16 +88,16 @@ export default function Home() {
           <div className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
             <div className="space-y-3 text-sm text-slate-600">
               <p>
-                Epiderm‑AI standardise la capture clinique et structure automatiquement le
-                dossier patient. Chaque photo est guidee par un masque de cadrage pour
-                garantir la reproductibilite. Les zones du visage sont ensuite analysees
-                pour produire une synthese claire et exploitable.
+                Epiderm-AI standardise la capture clinique et structure automatiquement le
+                dossier patient. Chaque photo est guidée par un masque de cadrage pour
+                garantir la reproductibilité. Les zones du visage sont ensuite analysées
+                pour produire une synthèse claire et exploitable.
               </p>
               <p>
-                L IA vous accompagne dans la formulation des traitements, propose des textes
+                L'IA vous accompagne dans la formulation des traitements, propose des textes
                 pédagogiques pour le patient et facilite la projection des options esthétiques.
-                Le praticien reste toujours decisionnaire : l IA est un support, pas une
-                automatisation medicale.
+                Le praticien reste toujours décisionnaire : l'IA est un support, pas une
+                automatisation médicale.
               </p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
@@ -106,24 +106,24 @@ export default function Home() {
               </p>
               <ul className="mt-3 space-y-2 text-sm text-slate-600">
                 <li>Un dossier patient clair, complet et exploitable.</li>
-                <li>Des captures standardisees a chaque consultation.</li>
-                <li>Des textes et recommandations coherents, en quelques secondes.</li>
-                <li>Une experience patient valorisante et pedagogique.</li>
+                <li>Des captures standardisées à chaque consultation.</li>
+                <li>Des textes et recommandations cohérents, en quelques secondes.</li>
+                <li>Une expérience patient valorisante et pédagogique.</li>
               </ul>
             </div>
           </div>
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white px-6 py-5">
-          <h2 className="text-lg font-semibold text-slate-900">Pourquoi Epiderm‑AI</h2>
+          <h2 className="text-lg font-semibold text-slate-900">Pourquoi Epiderm-AI</h2>
           <p className="mt-2 text-sm text-slate-600">
-            Standardisez la capture, gagnez du temps sur la synthese clinique et proposez
+            Standardisez la capture, gagnez du temps sur la synthèse clinique et proposez
             des recommandations esthétiques claires et pédagogiques pour vos patients.
           </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             {[
-              "Moins de temps perdu a refaire des photos.",
-              "Des comptes‑rendus coherents a chaque consultation.",
+              "Moins de temps perdu à refaire des photos.",
+              "Des comptes-rendus cohérents à chaque consultation.",
               "Une projection claire pour rassurer le patient.",
             ].map((item) => (
               <div

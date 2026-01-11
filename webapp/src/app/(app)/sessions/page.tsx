@@ -104,7 +104,7 @@ export default function SessionsPage() {
       setError(fetchError.message);
     } else {
       const normalized =
-        data?.map((row) => ({
+        data?.map((row: any) => ({
           id: row.id,
           session_date: row.session_date,
           objectives: row.objectives,
@@ -140,7 +140,7 @@ export default function SessionsPage() {
     }
 
     const signedPhotos = await Promise.all(
-      (data ?? []).map(async (photo) => {
+      (data ?? []).map(async (photo: any) => {
         const { data: signedData, error: signedError } =
           await supabaseBrowser.storage
             .from(storageBucket)
