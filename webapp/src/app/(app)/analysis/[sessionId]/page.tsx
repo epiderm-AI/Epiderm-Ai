@@ -529,6 +529,7 @@ type PhotoRow = {
   id: string;
   storage_path: string;
   created_at: string;
+  angle?: string;
 };
 
 type SessionPhoto = PhotoRow & {
@@ -1135,21 +1136,22 @@ export default function AnalysisPage() {
         setIsCaptureComplete(false);
         setSessionPhotos([]);
       } else if (allPhotos) {
-        const angleSet = new Set(allPhotos.map((row) => row.angle));
+        const angleSet = new Set(allPhotos.map((row: PhotoRow) => row.angle));
         setIsCaptureComplete(REQUIRED_ANGLES.every((angle) => angleSet.has(angle)));
         if (storageBucket) {
           const signedPhotos = await Promise.all(
-            allPhotos.map(async (photo) => {
+            allPhotos.map(async (photo: PhotoRow) => {
               const { data: signedData } = await supabaseBrowser.storage
                 .from(storageBucket)
                 .createSignedUrl(photo.storage_path, 60 * 60);
               return {
                 ...photo,
+                angle: photo.angle || "",
                 signedUrl: signedData?.signedUrl ?? "",
-              };
+              } as SessionPhoto;
             })
           );
-          setSessionPhotos(signedPhotos.filter((photo) => photo.signedUrl));
+          setSessionPhotos(signedPhotos.filter((photo: SessionPhoto) => photo.signedUrl));
         } else {
           setSessionPhotos([]);
         }
@@ -1336,7 +1338,9 @@ export default function AnalysisPage() {
     if (!showZones || !activePhoto) {
       return;
     }
-    if (zonesByPhoto[activePhoto.id]) {
+    // Capturer activePhoto pour éviter les problèmes de nullabilité
+    const currentPhoto = activePhoto;
+    if (zonesByPhoto[currentPhoto.id]) {
       setZonesStatus("ready");
       return;
     }
@@ -1347,7 +1351,7 @@ export default function AnalysisPage() {
       const { data, error: zonesLoadError } = await supabaseBrowser
         .from("face_landmarks")
         .select("landmarks")
-        .eq("photo_id", activePhoto.id)
+        .eq("photo_id", currentPhoto.id)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -1361,7 +1365,7 @@ export default function AnalysisPage() {
         return;
       }
       if (!data?.landmarks) {
-        if (!activePhoto.signedUrl || !sessionId) {
+        if (!currentPhoto.signedUrl || !sessionId) {
           setZonesStatus("error");
           setZonesError("Landmarks indisponibles pour cette photo.");
           return;
@@ -1370,7 +1374,7 @@ export default function AnalysisPage() {
           const landmarker = await getLandmarker();
           const image = new Image();
           image.crossOrigin = "anonymous";
-          image.src = activePhoto.signedUrl;
+          image.src = currentPhoto.signedUrl;
           await image.decode();
 
           const results = landmarker.detect(image);
@@ -1383,7 +1387,7 @@ export default function AnalysisPage() {
 
           const insertPayload = buildLandmarkInsert(
             face as FaceLandmark[],
-            activePhoto.id,
+            currentPhoto.id,
             sessionId
           );
           const { error: insertError } = await supabaseBrowser
@@ -1398,14 +1402,14 @@ export default function AnalysisPage() {
 
           const zones = filterZonesByAngle(
             buildFaceZones(face as FaceLandmark[]),
-            activePhoto.angle
+            currentPhoto.angle
           );
           if (zones.length === 0) {
             setZonesStatus("error");
             setZonesError("Zones non disponibles pour cet angle.");
             return;
           }
-          setZonesByPhoto((prev) => ({ ...prev, [activePhoto.id]: zones }));
+          setZonesByPhoto((prev) => ({ ...prev, [currentPhoto.id]: zones }));
           setZonesStatus("ready");
           return;
         } catch (error) {
@@ -1417,14 +1421,14 @@ export default function AnalysisPage() {
 
       const zones = filterZonesByAngle(
         buildFaceZones(data.landmarks as FaceLandmark[]),
-        activePhoto.angle
+        currentPhoto.angle
       );
       if (zones.length === 0) {
         setZonesStatus("error");
         setZonesError("Zones non disponibles pour cet angle.");
         return;
       }
-      setZonesByPhoto((prev) => ({ ...prev, [activePhoto.id]: zones }));
+      setZonesByPhoto((prev) => ({ ...prev, [currentPhoto.id]: zones }));
       setZonesStatus("ready");
     }
 

@@ -16,10 +16,10 @@ interface FaceMeshAnimationProps {
 }
 
 export function FaceMeshAnimation({ isAnalyzing }: FaceMeshAnimationProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number>();
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const animationRef = useRef<number | undefined>(undefined);
   const pointsRef = useRef<Point3D[]>([]);
-  const progressRef = useRef(0);
+  const progressRef = useRef<number>(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
