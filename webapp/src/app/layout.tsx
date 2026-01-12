@@ -24,9 +24,24 @@ export default function RootLayout({
   children: ReactNode;
 }>) {
   return (
-    <html lang="fr">
+    <html lang="fr" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                // Force light mode - disable dark mode completely
+                document.documentElement.style.colorScheme = 'light';
+                document.documentElement.classList.remove('dark');
+              } catch (e) {}
+            `,
+          }}
+        />
+        <meta name="color-scheme" content="light only" />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        style={{ colorScheme: 'light' }}
       >
         {children}
       </body>
