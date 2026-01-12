@@ -49,20 +49,6 @@ type CalibrationArc = {
   active: boolean;
 };
 
-type MeshPoint = { x: number; y: number };
-
-function buildMeshPoints(): MeshPoint[] {
-  const points: MeshPoint[] = [];
-  for (let y = 18; y <= 106; y += 8) {
-    for (let x = 28; x <= 72; x += 8) {
-      points.push({ x, y });
-    }
-  }
-  return points;
-}
-
-const MESH_POINTS = buildMeshPoints();
-
 function polarToCartesian(
   centerX: number,
   centerY: number,
@@ -829,54 +815,38 @@ export default function CapturePage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-8">
+      {/* Loading overlay pendant l'upload */}
+      {status === "uploading" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95">
+          <div className="flex flex-col items-center gap-6 text-center">
+            <video
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="w-full max-w-md h-auto rounded-2xl shadow-2xl"
+              src="https://ongcadzzheyyigickvfu.supabase.co/storage/v1/object/public/images%20site%20web/new.mp4"
+            />
+            <div className="text-lg font-semibold text-slate-200">
+              Enregistrement de la photo...
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCompletionAnimation ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95">
           <div className="flex flex-col items-center gap-6 text-center">
-            <div className="completion-mask-wrapper">
-              <div className="mask-rotate">
-                <svg className="h-full w-full" viewBox="0 0 100 120">
-                  <defs>
-                    <clipPath id="meshFaceClip">
-                      <ellipse cx="50" cy="60" rx="24" ry="34" />
-                    </clipPath>
-                  </defs>
-                  <path
-                    d="M50 12 C34 13 26 24 24 44 L24 76 C26 96 38 108 50 110 C62 108 74 96 76 76 L76 44 C74 24 66 13 50 12"
-                    fill="none"
-                    stroke="rgba(148,163,184,0.6)"
-                    strokeWidth="0.9"
-                  />
-                  <g clipPath="url(#meshFaceClip)">
-                    {MESH_POINTS.map((point, index) => (
-                      <circle
-                        key={`${point.x}-${point.y}-${index}`}
-                        cx={point.x}
-                        cy={point.y}
-                        r="0.9"
-                        fill="rgba(226,232,240,0.9)"
-                      />
-                    ))}
-                    <path
-                      d="M34 56 Q50 46 66 56"
-                      fill="none"
-                      stroke="rgba(226,232,240,0.7)"
-                      strokeWidth="0.7"
-                    />
-                    <path
-                      d="M44 74 Q50 78 56 74"
-                      fill="none"
-                      stroke="rgba(226,232,240,0.7)"
-                      strokeWidth="0.7"
-                    />
-                  </g>
-                </svg>
-              </div>
-            </div>
-            <div className="text-sm font-semibold text-slate-200">
+            <video
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="w-full max-w-md h-auto rounded-2xl shadow-2xl"
+              src="https://ongcadzzheyyigickvfu.supabase.co/storage/v1/object/public/images%20site%20web/new.mp4"
+            />
+            <div className="text-lg font-semibold text-slate-200">
               Analyse en cours...
-            </div>
-            <div className="h-1 w-52 overflow-hidden rounded-full bg-slate-800">
-              <div className="progress-bar h-full w-full bg-emerald-400" />
             </div>
           </div>
         </div>
@@ -1226,17 +1196,10 @@ export default function CapturePage() {
                 disabled={status === "uploading" || !step || !!cameraError || isCalibrationStep}
                 className="group flex h-20 w-20 items-center justify-center rounded-full bg-slate-900 text-white shadow-2xl transition-all hover:scale-110 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 min-h-[80px]"
               >
-              {status === "uploading" ? (
-                <svg className="h-8 w-8 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-              ) : (
-                <svg className="h-10 w-10 transition-transform group-hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              )}
+              <svg className="h-10 w-10 transition-transform group-hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
             </button>
 
             <Button
@@ -1430,44 +1393,6 @@ export default function CapturePage() {
           </Link>
         </Card>
       )}
-      <style jsx>{`
-        @keyframes mask-rotate {
-          0% {
-            transform: rotateY(-70deg) rotateX(6deg);
-            opacity: 0.4;
-          }
-          60% {
-            opacity: 0.85;
-          }
-          100% {
-            transform: rotateY(0deg) rotateX(0deg);
-            opacity: 1;
-          }
-        }
-        @keyframes progress-fill {
-          0% {
-            transform: translateX(-100%);
-          }
-          100% {
-            transform: translateX(0%);
-          }
-        }
-        .completion-mask-wrapper {
-          width: 220px;
-          height: 260px;
-          perspective: 900px;
-        }
-        .mask-rotate {
-          transform-origin: center;
-          animation: mask-rotate 3s ease-in-out forwards;
-          transform-style: preserve-3d;
-          width: 100%;
-          height: 100%;
-        }
-        .progress-bar {
-          animation: progress-fill 3s linear forwards;
-        }
-      `}</style>
     </div>
   );
 }
