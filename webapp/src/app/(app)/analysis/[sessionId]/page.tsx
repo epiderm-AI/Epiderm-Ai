@@ -1026,6 +1026,10 @@ export default function AnalysisPage() {
   const [zonesByPhoto, setZonesByPhoto] = useState<Record<string, ZoneShape[]>>({});
   const [zonesStatus, setZonesStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [zonesError, setZonesError] = useState("");
+  const [hoveredZone, setHoveredZone] = useState<string | null>(null);
+  const [selectedZone, setSelectedZone] = useState<string | null>(null);
+  const [autoZoom, setAutoZoom] = useState(false);
+  const [zoomTransform, setZoomTransform] = useState({ scale: 1, translateX: 0, translateY: 0 });
   const [chatMessages, setChatMessages] = useState<
     { role: "user" | "assistant"; content: string }[]
   >([]);
@@ -1334,6 +1338,61 @@ export default function AnalysisPage() {
     globalAnalysis,
   ]);
 
+  // Calculer le zoom automatique basé sur les landmarks
+  useEffect(() => {
+    if (!autoZoom || !activePhoto) {
+      setZoomTransform({ scale: 1, translateX: 0, translateY: 0 });
+      return;
+    }
+
+    const currentPhoto = activePhoto; // Capturer pour éviter les problèmes de nullabilité
+
+    async function calculateAutoZoom() {
+      const { data, error } = await supabaseBrowser
+        .from("face_landmarks")
+        .select("landmarks")
+        .eq("photo_id", currentPhoto.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error || !data?.landmarks) {
+        return;
+      }
+
+      const landmarks = data.landmarks as Array<{ x: number; y: number; z?: number }>;
+      const xs = landmarks.map((p) => p.x * 100);
+      const ys = landmarks.map((p) => p.y * 100);
+
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+
+      const faceWidth = maxX - minX;
+      const faceHeight = maxY - minY;
+      const faceCenterX = (minX + maxX) / 2;
+      const faceCenterY = (minY + maxY) / 2;
+
+      // Ajouter des marges de 25% autour du visage
+      const targetWidth = faceWidth * 1.5;
+      const targetHeight = faceHeight * 1.5;
+
+      // Calculer le facteur de zoom pour remplir ~70% de l'espace
+      const scaleX = 70 / targetWidth;
+      const scaleY = 70 / targetHeight;
+      const scale = Math.min(scaleX, scaleY, 2.5); // Max zoom 2.5x
+
+      // Calculer le translate pour centrer le visage
+      const translateX = (50 - faceCenterX) * scale;
+      const translateY = (50 - faceCenterY) * scale;
+
+      setZoomTransform({ scale, translateX, translateY });
+    }
+
+    calculateAutoZoom();
+  }, [autoZoom, activePhoto]);
+
   useEffect(() => {
     if (!showZones || !activePhoto) {
       return;
@@ -1620,6 +1679,18 @@ export default function AnalysisPage() {
               {showZones ? "Masquer les zones" : "Afficher les zones"}
             </button>
             <button
+              className={`rounded-full border px-5 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                autoZoom
+                  ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                  : "border-zinc-200 bg-white text-zinc-700 hover:border-emerald-300 hover:text-emerald-700"
+              }`}
+              disabled={!activePhoto}
+              onClick={() => setAutoZoom((prev) => !prev)}
+              type="button"
+            >
+              {autoZoom ? "🔍 Zoom activé" : "🔍 Zoom auto"}
+            </button>
+            <button
               className="rounded-full bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-gray-400"
               disabled={!facePhoto || globalStatus === "analyzing"}
               onClick={handleGlobalAnalysis}
@@ -1672,40 +1743,101 @@ export default function AnalysisPage() {
         <section className="grid gap-6 lg:grid-cols-[1.6fr_0.9fr]">
           <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
             <div className="relative overflow-hidden rounded-2xl bg-zinc-100" style={{ touchAction: "none" }}>
-              <img
-                ref={mainImageRef}
-                alt={`Photo ${ANGLE_LABELS[activePhoto?.angle ?? "face"] ?? "face"}`}
-                className="w-full select-none object-cover"
-                src={activePhoto?.signedUrl ?? signedUrl}
-                onLoad={syncCanvasSize}
-              />
+              <div
+                style={{
+                  transform: autoZoom
+                    ? `scale(${zoomTransform.scale}) translate(${zoomTransform.translateX}px, ${zoomTransform.translateY}px)`
+                    : "none",
+                  transition: "transform 0.5s ease-out",
+                  transformOrigin: "center center",
+                }}
+              >
+                <img
+                  ref={mainImageRef}
+                  alt={`Photo ${ANGLE_LABELS[activePhoto?.angle ?? "face"] ?? "face"}`}
+                  className="w-full select-none object-cover"
+                  src={activePhoto?.signedUrl ?? signedUrl}
+                  onLoad={syncCanvasSize}
+                />
               {showZones && activeZones ? (
                 <svg
-                  className="absolute inset-0 h-full w-full pointer-events-none"
+                  className="absolute inset-0 h-full w-full"
                   viewBox="0 0 100 100"
                   preserveAspectRatio="none"
                 >
-                  {activeZones.map((zone) => (
-                    <g key={zone.id}>
-                      <polygon
-                        points={zone.points.map((point) => `${point.x},${point.y}`).join(" ")}
-                        fill={`${zone.color}33`}
-                        stroke={`${zone.color}cc`}
-                        strokeWidth="0.8"
-                      />
-                      <text
-                        x={zone.labelX}
-                        y={zone.labelY}
-                        textAnchor="middle"
-                        dominantBaseline="central"
-                        fontSize="2.6"
-                        fill="#0f172a"
-                        opacity="0.85"
+                  {/* Quadrillage subtil pour référence */}
+                  <defs>
+                    <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
+                      <path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(100,116,139,0.08)" strokeWidth="0.15"/>
+                    </pattern>
+                  </defs>
+                  <rect width="100" height="100" fill="url(#grid)" />
+
+                  {/* Zones faciales */}
+                  {activeZones.map((zone) => {
+                    const isHovered = hoveredZone === zone.id;
+                    const isSelected = selectedZone === zone.id;
+
+                    return (
+                      <g
+                        key={zone.id}
+                        style={{ cursor: 'pointer' }}
+                        onMouseEnter={() => setHoveredZone(zone.id)}
+                        onMouseLeave={() => setHoveredZone(null)}
+                        onClick={() => setSelectedZone(isSelected ? null : zone.id)}
                       >
-                        {zone.label}
-                      </text>
-                    </g>
-                  ))}
+                        {/* Zone de remplissage invisible pour l'interaction */}
+                        <polygon
+                          points={zone.points.map((point) => `${point.x},${point.y}`).join(" ")}
+                          fill="transparent"
+                          strokeWidth="0"
+                        />
+
+                        {/* Contour de la zone - style professionnel */}
+                        <polygon
+                          points={zone.points.map((point) => `${point.x},${point.y}`).join(" ")}
+                          fill={isSelected ? "rgba(99,102,241,0.12)" : isHovered ? "rgba(99,102,241,0.08)" : "rgba(100,116,139,0.03)"}
+                          stroke={isSelected ? "#6366f1" : isHovered ? "#818cf8" : "rgba(100,116,139,0.35)"}
+                          strokeWidth={isSelected ? "0.5" : isHovered ? "0.4" : "0.25"}
+                          strokeDasharray={isSelected ? "none" : "1,0.5"}
+                          style={{
+                            transition: "all 0.2s ease",
+                            pointerEvents: "all"
+                          }}
+                        />
+
+                        {/* Label affiché au survol ou à la sélection */}
+                        {(isHovered || isSelected) && (
+                          <g>
+                            {/* Fond du label */}
+                            <rect
+                              x={zone.labelX - 8}
+                              y={zone.labelY - 2.5}
+                              width="16"
+                              height="5"
+                              rx="1"
+                              fill="rgba(15,23,42,0.92)"
+                              stroke="rgba(255,255,255,0.15)"
+                              strokeWidth="0.15"
+                            />
+                            {/* Texte du label */}
+                            <text
+                              x={zone.labelX}
+                              y={zone.labelY}
+                              textAnchor="middle"
+                              dominantBaseline="central"
+                              fontSize="1.8"
+                              fontWeight="500"
+                              fill="#ffffff"
+                              style={{ pointerEvents: "none" }}
+                            >
+                              {zone.label}
+                            </text>
+                          </g>
+                        )}
+                      </g>
+                    );
+                  })}
                 </svg>
               ) : null}
               <canvas
@@ -1718,6 +1850,7 @@ export default function AnalysisPage() {
                 onPointerUp={handleCanvasPointerUp}
                 onPointerLeave={handleCanvasPointerLeave}
               />
+              </div>
             </div>
             {showZones ? (
               <div className="mt-3 text-xs text-zinc-500">

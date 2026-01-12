@@ -33,11 +33,15 @@ const FACE_OVAL_INDICES = [
 const GUIDE_BOX = { minX: 18, maxX: 82, minY: 6, maxY: 94 };
 
 const CALIBRATION_STEPS = [
-  { id: "center", label: "Face centre" },
-  { id: "left", label: "Tournez a gauche" },
-  { id: "right", label: "Tournez a droite" },
-  { id: "up", label: "Regardez vers le haut" },
-  { id: "down", label: "Regardez vers le bas" },
+  { id: "center", label: "Centrez votre visage", angle: 0, offsetX: 0, offsetY: 0 },
+  { id: "topLeft", label: "Tournez en haut à gauche", angle: 45, offsetX: -0.12, offsetY: -0.12 },
+  { id: "top", label: "Regardez vers le haut", angle: 90, offsetX: 0, offsetY: -0.15 },
+  { id: "topRight", label: "Tournez en haut à droite", angle: 135, offsetX: 0.12, offsetY: -0.12 },
+  { id: "right", label: "Tournez à droite", angle: 180, offsetX: 0.18, offsetY: 0 },
+  { id: "bottomRight", label: "Tournez en bas à droite", angle: 225, offsetX: 0.12, offsetY: 0.12 },
+  { id: "bottom", label: "Regardez vers le bas", angle: 270, offsetX: 0, offsetY: 0.18 },
+  { id: "bottomLeft", label: "Tournez en bas à gauche", angle: 315, offsetX: -0.12, offsetY: 0.12 },
+  { id: "left", label: "Tournez à gauche", angle: 360, offsetX: -0.18, offsetY: 0 },
 ] as const;
 
 type CalibrationKey = (typeof CALIBRATION_STEPS)[number]["id"];
@@ -90,7 +94,7 @@ function describeArc(
 function buildCalibrationArcs(state: Record<CalibrationKey, boolean>): CalibrationArc[] {
   const total = CALIBRATION_STEPS.length;
   const segment = 360 / total;
-  const gap = 10;
+  const gap = 4; // Réduire l'espacement pour un cercle plus continu
   return CALIBRATION_STEPS.map((step, index) => {
     const startAngle = index * segment + gap / 2;
     const endAngle = (index + 1) * segment - gap / 2;
@@ -153,10 +157,14 @@ export default function CapturePage() {
   const [isDetecting, setIsDetecting] = useState(false);
   const [calibrationState, setCalibrationState] = useState<Record<CalibrationKey, boolean>>({
     center: false,
-    left: false,
+    topLeft: false,
+    top: false,
+    topRight: false,
     right: false,
-    up: false,
-    down: false,
+    bottomRight: false,
+    bottom: false,
+    bottomLeft: false,
+    left: false,
   });
   const [calibrationHint, setCalibrationHint] = useState("Suivez les directions pour calibrer le relief.");
   const [showCompletionAnimation, setShowCompletionAnimation] = useState(false);
@@ -275,12 +283,16 @@ export default function CapturePage() {
     setCurrentStep(0);
     setCalibrationState({
       center: false,
-      left: false,
+      topLeft: false,
+      top: false,
+      topRight: false,
       right: false,
-      up: false,
-      down: false,
+      bottomRight: false,
+      bottom: false,
+      bottomLeft: false,
+      left: false,
     });
-    setCalibrationHint("Suivez les directions pour calibrer le relief.");
+    setCalibrationHint("Bougez lentement votre tête pour remplir le cercle");
     setShowCompletionAnimation(false);
     if (completionTimeoutRef.current) {
       window.clearTimeout(completionTimeoutRef.current);
@@ -298,11 +310,16 @@ export default function CapturePage() {
   }, []);
 
   useEffect(() => {
-    const pending = CALIBRATION_STEPS.find((stepItem) => !calibrationState[stepItem.id]);
-    if (pending) {
-      setCalibrationHint(pending.label);
+    const completedCount = Object.values(calibrationState).filter(Boolean).length;
+    const totalCount = CALIBRATION_STEPS.length;
+
+    if (completedCount === totalCount) {
+      setCalibrationHint("Calibration terminée ! Vous pouvez capturer.");
     } else {
-      setCalibrationHint("Calibration terminee. Vous pouvez capturer.");
+      const pending = CALIBRATION_STEPS.find((stepItem) => !calibrationState[stepItem.id]);
+      if (pending) {
+        setCalibrationHint(`${completedCount}/${totalCount} - ${pending.label}`);
+      }
     }
   }, [calibrationState]);
 
@@ -359,7 +376,7 @@ export default function CapturePage() {
           return;
         }
         const now = performance.now();
-        if (now - lastDetectRef.current < 120) {
+        if (now - lastDetectRef.current < 60) {
           rafRef.current = requestAnimationFrame(loop);
           return;
         }
@@ -436,21 +453,20 @@ export default function CapturePage() {
 
             setCalibrationState((prev) => {
               const next = { ...prev };
-              if (!next.center && Math.abs(noseOffsetX) < 0.06 && Math.abs(noseOffsetY) < 0.06) {
-                next.center = true;
-              }
-              if (!next.left && noseOffsetX < -0.16) {
-                next.left = true;
-              }
-              if (!next.right && noseOffsetX > 0.16) {
-                next.right = true;
-              }
-              if (!next.up && noseOffsetY < -0.14) {
-                next.up = true;
-              }
-              if (!next.down && noseOffsetY > 0.16) {
-                next.down = true;
-              }
+              const tolerance = 0.08;
+
+              CALIBRATION_STEPS.forEach((calibStep) => {
+                if (!next[calibStep.id]) {
+                  const deltaX = Math.abs(noseOffsetX - calibStep.offsetX);
+                  const deltaY = Math.abs(noseOffsetY - calibStep.offsetY);
+                  const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+                  if (distance < tolerance) {
+                    next[calibStep.id] = true;
+                  }
+                }
+              });
+
               return next;
             });
 
@@ -1083,37 +1099,54 @@ export default function CapturePage() {
 
               {isCalibrationStep ? (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                  <div className="relative h-[72%] w-[72%] max-w-[420px]">
+                  <div className="relative h-[75%] w-[75%] max-w-[450px]">
                     <svg className="h-full w-full" viewBox="0 0 100 100">
+                      {/* Cercle de fond subtil */}
                       <circle
                         cx="50"
                         cy="50"
                         r="28"
                         fill="none"
-                        stroke="rgba(255,255,255,0.18)"
-                        strokeWidth="1.5"
+                        stroke="rgba(255,255,255,0.1)"
+                        strokeWidth="1"
                       />
+                      {/* Segments de progression */}
                       {calibrationArcs.map((arc) => (
                         <path
                           key={arc.id}
-                          d={describeArc(50, 50, 34, arc.startAngle, arc.endAngle)}
-                          stroke={arc.active ? "rgba(34,197,94,0.95)" : "rgba(148,163,184,0.35)"}
-                          strokeWidth="5"
+                          d={describeArc(50, 50, 36, arc.startAngle, arc.endAngle)}
+                          stroke={arc.active ? "rgba(16,185,129,1)" : "rgba(100,116,139,0.3)"}
+                          strokeWidth="6.5"
                           strokeLinecap="round"
                           fill="none"
+                          style={{
+                            transition: "stroke 0.3s ease",
+                            filter: arc.active ? "drop-shadow(0 0 8px rgba(16,185,129,0.5))" : "none"
+                          }}
                         />
                       ))}
+                      {/* Cercle central avec icône visage */}
                       <circle
                         cx="50"
                         cy="50"
-                        r="18"
-                        fill="rgba(15,23,42,0.25)"
-                        stroke="rgba(255,255,255,0.15)"
-                        strokeWidth="0.8"
+                        r="20"
+                        fill="rgba(15,23,42,0.4)"
+                        stroke="rgba(255,255,255,0.2)"
+                        strokeWidth="1"
+                      />
+                      {/* Indicateur visage stylisé */}
+                      <circle cx="44" cy="46" r="1.5" fill="rgba(255,255,255,0.7)" />
+                      <circle cx="56" cy="46" r="1.5" fill="rgba(255,255,255,0.7)" />
+                      <path
+                        d="M 44 54 Q 50 57 56 54"
+                        fill="none"
+                        stroke="rgba(255,255,255,0.6)"
+                        strokeWidth="1.2"
+                        strokeLinecap="round"
                       />
                     </svg>
-                    <div className="absolute inset-x-0 bottom-6 flex items-center justify-center">
-                      <div className="rounded-full bg-black/70 px-4 py-2 text-xs font-semibold text-emerald-100 shadow-lg">
+                    <div className="absolute inset-x-0 bottom-4 flex items-center justify-center">
+                      <div className="rounded-full bg-black/80 px-5 py-2.5 text-sm font-medium text-white shadow-xl backdrop-blur-sm">
                         {calibrationHint}
                       </div>
                     </div>
