@@ -83,23 +83,35 @@
   --z-modal: 1050;
   --z-popover: 1060;
   --z-tooltip: 1070;
+
+  /* Force light mode */
+  color-scheme: light !important;
 }
 
-/* Dark mode support */
+/* Force light mode - Override system dark mode preferences */
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg-primary: #0f172a;
-    --bg-secondary: #1e293b;
-    --bg-tertiary: #334155;
-    --surface: rgba(30, 41, 59, 0.9);
-    --surface-hover: rgba(30, 41, 59, 0.95);
-    --surface-glass: rgba(30, 41, 59, 0.7);
-    --border: #334155;
-    --border-light: #475569;
-    --text-primary: #f8fafc;
-    --text-secondary: #cbd5e1;
-    --text-tertiary: #94a3b8;
-    --text-muted: #64748b;
+    /* Couleurs de fond - Force light colors */
+    --bg-primary: #ffffff !important;
+    --bg-secondary: #f8fafc !important;
+    --bg-tertiary: #f1f5f9 !important;
+
+    /* Surfaces */
+    --surface: rgba(255, 255, 255, 0.9) !important;
+    --surface-hover: rgba(255, 255, 255, 0.95) !important;
+    --surface-glass: rgba(255, 255, 255, 0.7) !important;
+
+    /* Bordures */
+    --border: #e2e8f0 !important;
+    --border-light: #f1f5f9 !important;
+
+    /* Texte */
+    --text-primary: #0f172a !important;
+    --text-secondary: #475569 !important;
+    --text-tertiary: #94a3b8 !important;
+    --text-muted: #cbd5e1 !important;
+
+    color-scheme: light !important;
   }
 }
 

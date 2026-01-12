@@ -58,7 +58,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         </div>
 
         {/* Mobile Navigation */}
-        <div className="border-t md:hidden" style={{ borderColor: 'var(--border)' }}>
+        <div className="border-t md:hidden" style={{ borderColor: 'var(--border)', backgroundColor: '#ffffff' }}>
           <nav className="mx-auto flex w-full max-w-7xl items-center justify-around px-4 py-2">
             {navLinks.map((link) => {
               const isActive = pathname === link.href || pathname?.startsWith(link.href + '/');
